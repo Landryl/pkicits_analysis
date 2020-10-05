@@ -16,6 +16,8 @@ fun pkey_to_point(pkey): point [data, typeConverter].
 fun pk(skey): pkey.
 equation forall x:skey; pkey_to_point(pk(x)) = mul(skey_to_scalar(x), G).
 
+fun pkey_to_bitstring(pkey): bitstring [data, typeConverter].
+
 (* Symmetric encryption *)
 type key.
 
@@ -31,10 +33,11 @@ reduc forall m: bitstring, k: key; sdec(senc(m, k), k) = m.
 fun senck(key, key): bitstring.
 reduc forall km: key, k: key; sdeck(senck(km, k), k) = km.
 
-(* Identity *)
-type host.
+fun sign(bitstring, skey): bitstring.
+reduc forall m: bitstring, sk: skey; getmsg(sign(m, sk)) = m.
+reduc forall m: bitstring, sk: skey; checksign(sign(m, sk), pk(sk)) = true.
 
-(* Certificates *)
+type host.
 type certificate.
 
 (******************************************************************************)
@@ -45,7 +48,19 @@ table CRL(host, certificate).
 free c:channel.
 free InnerECRequest:bitstring [private].
 
-query attacker(InnerECRequest).
+event StationSentECRequest.
+event StationReceivedECResponse.
+event EAReceivedECRequest.
+event EASentECResponse.
+
+(* confidentiality of the canonical key *)
+query attacker(new sks).
+
+(* authentication of response should hold *)
+query inj-event(StationReceivedECResponse) ==> inj-event(EASentECResponse).
+
+(* authentication of request does not hold *)
+query inj-event(EAReceivedECRequest) ==> inj-event(StationSentECRequest).
 
 let RCA() =
     in(c, req:host);
@@ -55,15 +70,22 @@ let RCA() =
 
 let Station(sks:skey, pkea:pkey) =
     (* Make request - Etsi 102941 6.2.3.2.1 *)
-    (* TODO *)
+    new verificationSKey:skey;
+    let verificationPKey = pk(verificationSKey) in
+    let tbsKey = pkey_to_bitstring(verificationPKey) in
+
+    (* Proof of Possession *)
+    let inner_request = sign(tbsKey, verificationSKey) in
+    let outer_request = sign(inner_request, sks) in
+
+    event StationSentECRequest;
 
     (* Encrypt request using a fresh key *)
     new k:key;
-    out(c, senc(InnerECRequest, k));
+    out(c, senc(outer_request, k));
 
     (* Send fresh key using ECIES *)
     new r:scalar;
-    let pkey_client = mul(skey_to_scalar(sks), G) in
     let V = mul(r, G) in
     let S = mul(r, pkey_to_point(pkea)) in
     let derived_key = kdf(S) in
@@ -73,7 +95,8 @@ let Station(sks:skey, pkea:pkey) =
     (* Receive answer *)
     in(c, encrypted_answer:bitstring);
     let answer = sdec(encrypted_answer, k) in
-        0.
+    if checksign(answer, pkea) then
+        event StationReceivedECResponse.
 
 let EnrollementAuthority(skea:skey, pks:pkey) =
     (* Receive encrypted request *)
@@ -90,9 +113,10 @@ let EnrollementAuthority(skea:skey, pks:pkey) =
     let request = sdec(encrypted_request, k) in
 
     (* Process the request *)
-    if request = InnerECRequest then
+    event EAReceivedECRequest;
 
     (* Send request results *)
+    event EASentECResponse;
     new cert:bitstring;
     out(c, senc(cert, k)).
 
