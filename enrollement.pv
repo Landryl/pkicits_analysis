@@ -37,13 +37,7 @@ fun sign(bitstring, skey): bitstring.
 reduc forall m: bitstring, sk: skey; getmsg(sign(m, sk)) = m.
 reduc forall m: bitstring, sk: skey; checksign(sign(m, sk), pk(sk)) = true.
 
-type host.
-type certificate.
-
 (******************************************************************************)
-
-table CTL(host, certificate).
-table CRL(host, certificate).
 
 free c:channel.
 free InnerECRequest:bitstring [private].
@@ -61,12 +55,6 @@ query inj-event(StationReceivedECResponse) ==> inj-event(EASentECResponse).
 
 (* authentication of request does not hold *)
 query inj-event(EAReceivedECRequest) ==> inj-event(StationSentECRequest).
-
-let RCA() =
-    in(c, req:host);
-    get CTL(=req, cert:certificate) in
-        out(c, cert)
-    else 0.
 
 let Station(sks:skey, pkea:pkey) =
     (* Make request - Etsi 102941 6.2.3.2.1 *)
@@ -124,7 +112,6 @@ process
     new skrca:skey;
     new sks:skey;
     new skea:skey;
-    (     (!RCA)
-        | (!Station(sks, pk(skea)))
+    (     (!Station(sks, pk(skea)))
         | (!EnrollementAuthority(skea, pk(sks)))
     )
