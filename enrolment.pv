@@ -93,7 +93,7 @@ let Station(sks:skey, pkea:pkey) =
     if checksign(answer, pkea) then
         event StationReceivedECResponse.
 
-let EnrollementAuthority(skea:skey, pks:pkey) =
+let EnrolmentAuthority(skea:skey, pks:pkey) =
     (* Receive encrypted request *)
     in(c, encrypted_request:bitstring);
 
@@ -128,5 +128,5 @@ process
     new sks:skey;
     new skea:skey;
     (     (!Station(sks, pk(skea)))
-        | (!EnrollementAuthority(skea, pk(sks)))
+        | (!EnrolmentAuthority(skea, pk(sks)))
     )
