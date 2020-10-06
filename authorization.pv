@@ -1,0 +1,86 @@
+(******************************************************************************)
+(* Elliptic Curve Equations *)
+type point.
+type scalar.
+
+const G: point [data].
+fun mul(scalar, point): point.
+equation forall x: scalar, y: scalar; mul(y, mul(x, G)) = mul(x, mul(y, G)).
+
+(* For lisibility, conversions functions *)
+type skey.
+type pkey.
+fun skey_to_scalar(skey): scalar [data, typeConverter].
+fun pkey_to_point(pkey): point [data, typeConverter].
+
+fun pk(skey): pkey.
+equation forall x:skey; pkey_to_point(pk(x)) = mul(skey_to_scalar(x), G).
+
+fun pkey_to_bitstring(pkey): bitstring [data, typeConverter].
+
+(* Symmetric encryption *)
+type key.
+
+(* As stated in ProVerif user manual, basic encryption is already authenticated,
+   so no need for a MAC key *)
+fun kdf(point): key.
+
+(* Used to encrypt message, implemented using AES in the standard *)
+fun senc(bitstring, key): bitstring.
+reduc forall m: bitstring, k: key; sdec(senc(m, k), k) = m.
+
+(* Used to encrypt keys, implemented using XOR in the standard *)
+fun senck(key, key): bitstring.
+reduc forall km: key, k: key; sdeck(senck(km, k), k) = km.
+
+fun sign(bitstring, skey): bitstring.
+reduc forall m: bitstring, sk: skey; getmsg(sign(m, sk)) = m.
+reduc forall m: bitstring, sk: skey; checksign(sign(m, sk), pk(sk)) = true.
+
+(******************************************************************************)
+
+free c:channel.
+
+event StationSentATRequest.
+event StationReceivedValidATResponse.
+event AAReceivedATRequest.
+event AASentATResponse.
+
+let Station(sks:skey, pkaa:pkey, enrollmentSKey: skey, EC:bitstring) =
+    (* Make request - Etsi 102941 6.2.3.3.1 *)
+    new verificationSKey:skey;
+    new encryptionSKey:skey;
+    0.
+
+let AuthorizationAuthority(skaa:skey, pks:pkey) =
+    (* Receive encrypted request *)
+    in(c, encrypted_request:bitstring);
+
+    (* Receive encrypted key *)
+    in(c, encrypted_key:bitstring);
+    in(c, V:point);
+
+    (* Decryption *)
+    let S = mul(skey_to_scalar(skaa), V) in
+    let derived_key = kdf(S) in
+    let k = sdeck(encrypted_key, derived_key) in
+    let request = sdec(encrypted_request, k) in
+
+    0.
+
+let EnrolmentAuthority(skea:skey) =
+    0.
+
+process
+    new sks:skey;
+    new skea:skey;
+    new skaa:skey;
+    (* For authorization, we assume the station has acquired an EC *)
+    new enrolmentSKey:skey;
+    let enrolmentPKey = pk(enrolmentSKey) in
+    let EC = sign(pkey_to_bitstring(enrolmentPKey), skea) in
+    (* We also assume that the station possesses the AA public key *)
+    (     (!Station(sks, pk(skaa), enrolmentSKey, EC))
+        | (!AuthorizationAuthority(skaa, pk(sks)))
+        | (!EnrolmentAuthority(skea))
+    )
