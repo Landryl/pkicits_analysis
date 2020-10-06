@@ -109,7 +109,6 @@ let EnrollementAuthority(skea:skey, pks:pkey) =
     out(c, senc(cert, k)).
 
 process
-    new skrca:skey;
     new sks:skey;
     new skea:skey;
     (     (!Station(sks, pk(skea)))
