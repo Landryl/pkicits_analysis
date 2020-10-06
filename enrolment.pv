@@ -40,7 +40,6 @@ reduc forall m: bitstring, sk: skey; checksign(sign(m, sk), pk(sk)) = true.
 (******************************************************************************)
 
 free c:channel.
-free InnerECRequest:bitstring [private].
 
 event StationSentECRequest.
 event StationReceivedECResponse.
