@@ -44,7 +44,7 @@ free InnerECRequest:bitstring [private].
 
 event StationSentECRequest.
 event StationReceivedECResponse.
-event EAReceivedECRequest.
+event EAReceivedValidECRequest.
 event EASentECResponse.
 
 (* confidentiality of the canonical key *)
@@ -54,7 +54,14 @@ query attacker(new sks).
 query inj-event(StationReceivedECResponse) ==> inj-event(EASentECResponse).
 
 (* authentication of request does not hold *)
-query inj-event(EAReceivedECRequest) ==> inj-event(StationSentECRequest).
+query inj-event(EAReceivedValidECRequest) ==> inj-event(StationSentECRequest).
+
+(* Sanity check, making sure all branches are reachables. Theses queries should
+   return false *)
+(* query event(EAReceivedValidECRequest). *)
+(* query event(EASentECResponse).         *)
+(* query event(StationSentECRequest).     *)
+(* query event(StationReceivedECResponse).*)
 
 let Station(sks:skey, pkea:pkey) =
     (* Make request - Etsi 102941 6.2.3.2.1 *)
@@ -101,12 +108,21 @@ let EnrollementAuthority(skea:skey, pks:pkey) =
     let request = sdec(encrypted_request, k) in
 
     (* Process the request *)
-    event EAReceivedECRequest;
+    (** Check outer signature **)
+    if checksign(request, pks) then
+    let innerrequest = getmsg(request) in
+    (** Check inner signature **)
+    let pkey_to_bitstring(innerkey) = getmsg(innerrequest) in
+    if checksign(innerrequest, innerkey) then
+
+    event EAReceivedValidECRequest;
+
+    (** Sign provided key **)
+    let res = sign(pkey_to_bitstring(innerkey), skea) in
 
     (* Send request results *)
     event EASentECResponse;
-    new cert:bitstring;
-    out(c, senc(cert, k)).
+    out(c, senc(res, k)).
 
 process
     new sks:skey;
