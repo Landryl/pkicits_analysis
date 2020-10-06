@@ -37,6 +37,29 @@ fun sign(bitstring, skey): bitstring.
 reduc forall m: bitstring, sk: skey; getmsg(sign(m, sk)) = m.
 reduc forall m: bitstring, sk: skey; checksign(sign(m, sk), pk(sk)) = true.
 
+fun concat(bitstring): bitstring [data].
+
+(* ECIES *)
+
+letfun ecies_enc(m:bitstring, pk:pkey) =
+    new k:key;
+    new r:scalar;
+    let V = mul(r, G) in
+    let S = mul(r, pkey_to_point(pk)) in
+    let derived_key = kdf(S) in
+    concat((
+        (senc(m, k), senck(k, derived_key), V),
+        k)).
+
+letfun ecies_dec(m:bitstring, sk:skey) =
+    let concat(
+                (encrypted_msg:bitstring, encrypted_key:bitstring, V:point)
+              ) = m in
+    let S = mul(skey_to_scalar(sk), V) in
+    let derived_key = kdf(S) in
+    let k = sdeck(encrypted_key, derived_key) in
+    concat((sdec(encrypted_msg, k), k)).
+
 (******************************************************************************)
 
 free c:channel.
@@ -74,17 +97,10 @@ let Station(sks:skey, pkea:pkey) =
 
     event StationSentECRequest;
 
-    (* Encrypt request using a fresh key *)
-    new k:key;
-    out(c, senc(outer_request, k));
-
-    (* Send fresh key using ECIES *)
-    new r:scalar;
-    let V = mul(r, G) in
-    let S = mul(r, pkey_to_point(pkea)) in
-    let derived_key = kdf(S) in
-    out(c, senck(k, derived_key));
-    out(c, V);
+    let concat(
+            (encrypted_request:bitstring, k:key)
+              ) = ecies_enc(outer_request, pkea) in
+    out(c, encrypted_request);
 
     (* Receive answer *)
     in(c, encrypted_answer:bitstring);
@@ -93,18 +109,10 @@ let Station(sks:skey, pkea:pkey) =
         event StationReceivedECResponse.
 
 let EnrolmentAuthority(skea:skey, pks:pkey) =
-    (* Receive encrypted request *)
     in(c, encrypted_request:bitstring);
-
-    (* Receive encrypted key *)
-    in(c, encrypted_key:bitstring);
-    in(c, V:point);
-
-    (* Decryption *)
-    let S = mul(skey_to_scalar(skea), V) in
-    let derived_key = kdf(S) in
-    let k = sdeck(encrypted_key, derived_key) in
-    let request = sdec(encrypted_request, k) in
+    let concat(
+            (request:bitstring, k:key)
+              ) = ecies_dec(encrypted_request, skea) in
 
     (* Process the request *)
     (** Check outer signature **)
