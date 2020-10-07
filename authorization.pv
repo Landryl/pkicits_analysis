@@ -37,6 +37,50 @@ fun sign(bitstring, skey): bitstring.
 reduc forall m: bitstring, sk: skey; getmsg(sign(m, sk)) = m.
 reduc forall m: bitstring, sk: skey; checksign(sign(m, sk), pk(sk)) = true.
 
+(* Hmac used in ATRequest *)
+type hkey.
+
+fun hmac(bitstring, hkey): bitstring.
+reduc forall m: bitstring, k: hkey; checkhmac(hmac(m, k), k) = true.
+
+(* Hash used in external payload structures *)
+
+fun hash(bitstring): bitstring.
+reduc forall m: bitstring; checkhash(hash(m), m) = true.
+
+(* ECIES *)
+
+(* Encrypt a message following the specifications provided in Etsi102941
+   annex E. Returns a tuple (m, k), m being a tuple containing the encrypted
+   message and all the necessary to decrypt it, and k being the symmetric AES
+   key that can be reused notably to decrypt the response
+
+   Parameters:
+    m: the message to encrypt
+    pk: the public key of the recipient
+*)
+letfun ecies_enc(m:bitstring, pk:pkey) =
+    new k:key;
+    new r:scalar;
+    let V = mul(r, G) in
+    let S = mul(r, pkey_to_point(pk)) in
+    let derived_key = kdf(S) in
+    ( (senc(m, k), senck(k, derived_key), V), k ).
+
+(* Decrypts a message that has been encrypted following Etsi102941 annex E.
+
+   Parameters:
+    m: a tuple (m, k, V) made of a symmetricaly encrypted message, following by
+       its encrypted respective key using ECIES and V as defined in the standard
+    sk: the private key of the recipient
+*)
+letfun ecies_dec(m:bitstring, sk:skey) =
+    let (encrypted_msg:bitstring, encrypted_key:bitstring, V:point) = m in
+    let S = mul(skey_to_scalar(sk), V) in
+    let derived_key = kdf(S) in
+    let k = sdeck(encrypted_key, derived_key) in
+    (sdec(encrypted_msg, k), k).
+
 (******************************************************************************)
 
 free c:channel.
@@ -46,25 +90,63 @@ event StationReceivedValidATResponse.
 event AAReceivedATRequest.
 event AASentATResponse.
 
-let Station(sks:skey, pkaa:pkey, enrollmentSKey: skey, EC:bitstring) =
+(*query event(AAReceivedATRequest).*)
+(*query event(StationSentATRequest).*)
+
+query event(StationReceivedValidATResponse).
+
+let Station(sks:skey, pkaa:pkey, pkea:pkey, enrolmentSKey: skey, EC:bitstring) =
     (* Make request - Etsi 102941 6.2.3.3.1 *)
     new verificationSKey:skey;
-    new encryptionSKey:skey;
-    0.
+    let verificationPKey = pk(verificationSKey) in
+
+    (** Making the SharedATRequest **)
+    new hmacKey:hkey;
+    let keytag = hmac(pkey_to_bitstring(verificationPKey), hmacKey) in
+    let sharedATRequestHash = hash(keytag) in
+
+    (** Making the ECSignature encrypted for EA **)
+    let signedExternalPayload = sign(sharedATRequestHash, enrolmentSKey) in
+    let (ECSignature:bitstring, kea:key) = ecies_enc(signedExternalPayload, pkea) in
+
+    (** enc(ECSignature + SharedATRequest + publicKeys + hmacKey) **)
+    let innerATRequest = (ECSignature, keytag, verificationPKey, hmacKey) in
+
+    (** This model an authorization request message without POP *)
+    (** To model with POP, innerATRequest should be signed before encryption **)
+
+    let (m:bitstring, k:key) = ecies_enc(innerATRequest, pkaa) in
+
+    event StationSentATRequest;
+    out(c, m);
+
+    in(c, resm:bitstring);
+    let res = sdec(resm, k) in
+    (* Checking station temporary key has been signed by AA *)
+    if checksign(res, pkaa) then
+    event StationReceivedValidATResponse.
 
 let AuthorizationAuthority(skaa:skey, pks:pkey) =
-    (* Receive encrypted request *)
-    in(c, encrypted_request:bitstring);
+    in(c, m:bitstring);
+    let (request:bitstring, k:key) = ecies_dec(m, skaa) in
+    let (ECSignature:bitstring, keytag:bitstring, verificationPKey:pkey,
+         hmacKey:hkey) = request in
 
-    (* Receive encrypted key *)
-    in(c, encrypted_key:bitstring);
-    in(c, V:point);
+    event AAReceivedATRequest;
 
-    (* Decryption *)
-    let S = mul(skey_to_scalar(skaa), V) in
-    let derived_key = kdf(S) in
-    let k = sdeck(encrypted_key, derived_key) in
-    let request = sdec(encrypted_request, k) in
+    (* Checking if the keytag is correct *)
+    if checkhmac(keytag, hmacKey) then
+
+    (* Ask AA authorization validation *)
+    (** assumed positive for now **)
+
+    (* Making the AT *)
+    let AT = sign(pkey_to_bitstring(verificationPKey), skaa) in
+
+    (* Usually the AT contains more information, not only a signature. The whole
+       structure is then signed before encryption. *)
+
+    out(c, senc(AT, k));
 
     0.
 
@@ -80,7 +162,7 @@ process
     let enrolmentPKey = pk(enrolmentSKey) in
     let EC = sign(pkey_to_bitstring(enrolmentPKey), skea) in
     (* We also assume that the station possesses the AA public key *)
-    (     (!Station(sks, pk(skaa), enrolmentSKey, EC))
+    (     (!Station(sks, pk(skaa), pk(skea), enrolmentSKey, EC))
         | (!AuthorizationAuthority(skaa, pk(sks)))
         | (!EnrolmentAuthority(skea))
     )
