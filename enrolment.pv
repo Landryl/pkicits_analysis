@@ -37,8 +37,6 @@ fun sign(bitstring, skey): bitstring.
 reduc forall m: bitstring, sk: skey; getmsg(sign(m, sk)) = m.
 reduc forall m: bitstring, sk: skey; checksign(sign(m, sk), pk(sk)) = true.
 
-fun concat(bitstring): bitstring [data].
-
 (* ECIES *)
 
 letfun ecies_enc(m:bitstring, pk:pkey) =
@@ -47,18 +45,14 @@ letfun ecies_enc(m:bitstring, pk:pkey) =
     let V = mul(r, G) in
     let S = mul(r, pkey_to_point(pk)) in
     let derived_key = kdf(S) in
-    concat((
-        (senc(m, k), senck(k, derived_key), V),
-        k)).
+    ( (senc(m, k), senck(k, derived_key), V), k).
 
 letfun ecies_dec(m:bitstring, sk:skey) =
-    let concat(
-                (encrypted_msg:bitstring, encrypted_key:bitstring, V:point)
-              ) = m in
+    let (encrypted_msg:bitstring, encrypted_key:bitstring, V:point) = m in
     let S = mul(skey_to_scalar(sk), V) in
     let derived_key = kdf(S) in
     let k = sdeck(encrypted_key, derived_key) in
-    concat((sdec(encrypted_msg, k), k)).
+    (sdec(encrypted_msg, k), k).
 
 (******************************************************************************)
 
@@ -97,9 +91,7 @@ let Station(sks:skey, pkea:pkey) =
 
     event StationSentECRequest;
 
-    let concat(
-            (encrypted_request:bitstring, k:key)
-              ) = ecies_enc(outer_request, pkea) in
+    let (encrypted_request:bitstring, k:key) = ecies_enc(outer_request, pkea) in
     out(c, encrypted_request);
 
     (* Receive answer *)
@@ -110,9 +102,7 @@ let Station(sks:skey, pkea:pkey) =
 
 let EnrolmentAuthority(skea:skey, pks:pkey) =
     in(c, encrypted_request:bitstring);
-    let concat(
-            (request:bitstring, k:key)
-              ) = ecies_dec(encrypted_request, skea) in
+    let (request:bitstring, k:key) = ecies_dec(encrypted_request, skea) in
 
     (* Process the request *)
     (** Check outer signature **)
