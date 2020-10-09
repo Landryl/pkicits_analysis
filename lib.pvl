@@ -1,0 +1,136 @@
+free c:channel.
+
+(************************* ELLIPTIC CURVE EQUATIONS ***************************)
+
+(* Theses equations are required for the modeling of ECIES. See ECIES section
+   for a higher-level of abstraction *)
+
+type point.
+type scalar.
+
+const G: point [data].
+fun mul(scalar, point): point.
+equation forall x: scalar, y: scalar; mul(y, mul(x, G)) = mul(x, mul(y, G)).
+
+(* For lisibility, conversions functions that are closer to usual conventions
+   seen in other ProVerif models *)
+
+type skey.
+type pkey.
+
+fun skey_to_scalar(skey): scalar [data, typeConverter].
+fun pkey_to_point(pkey): point [data, typeConverter].
+
+fun pk(skey): pkey.
+equation forall x:skey; pkey_to_point(pk(x)) = mul(skey_to_scalar(x), G).
+
+(* Required to allow encryption of public keys *)
+fun pkey_to_bitstring(pkey): bitstring [data, typeConverter].
+
+(*************************** SYMMETRIC ENCRYPTION *****************************)
+
+type key.
+
+(* As stated in ProVerif user manual, basic encryption is already authenticated,
+   so no need for a MAC key *)
+fun kdf(point): key.
+
+(* Used to encrypt message, implemented using AES-CCM in the standard *)
+fun senc(bitstring, key): bitstring.
+reduc forall m: bitstring, k: key; sdec(senc(m, k), k) = m.
+
+(* Used to encrypt keys, implemented using XOR in the standard *)
+fun senck(key, key): bitstring.
+reduc forall km: key, k: key; sdeck(senck(km, k), k) = km.
+
+(******************************** SIGNATURES **********************************)
+
+fun sign(bitstring, skey): bitstring.
+reduc forall m: bitstring, sk: skey; getmsg(sign(m, sk)) = m.
+reduc forall m: bitstring, sk: skey; checksign(sign(m, sk), pk(sk)) = true.
+
+(********************************** HASHES ************************************)
+
+(* Hmac used in ATRequest *)
+type hkey.
+
+fun hmac(bitstring, hkey): bitstring.
+reduc forall m: bitstring, k: hkey; checkhmac(hmac(m, k), k) = true.
+
+(* Hash used in external payload structures *)
+
+fun hash(bitstring): bitstring.
+reduc forall m: bitstring; checkhash(hash(m), m) = true.
+
+(******************************** CERTIFICATES ********************************)
+
+type certificate.
+type host.
+
+(* Parameters:
+    skey: the private key of the certifier
+    pkey: the public key to be signed
+    host: the identity associated with the public key
+*)
+fun makecert(skey, pkey, host): certificate [data].
+
+(* The CTL and CRL are modeled using tables. By default, theses tables are not
+   available to the attacker. To make them so, a fictional process must be
+   created that act as a middleman. Scenarios where the attacker is given the
+   rights to write into the CTL/CRL can also be modeled by giving this fictional
+   process writing capabilities. *)
+
+table CTL(host, certificate).
+table CRL(host).
+
+let readCTL() =
+    in(c, req:host);
+    get CTL(=req, cert:certificate) in
+    out(c, cert).
+
+(*********************************** ECIES ************************************)
+
+(* In ETSI 102 941, annex E, encryption is done using the following strategy :
+    - A symmetric key is generated
+    - The message is encrypted using it
+    - A random private assymetric key is generated
+    - A shared secret using it with the CA public key is created
+    - This shared secret is fed into a key derivation function
+    - Keys extracted are used to encrypt the symmetric key with XOR, and provide
+      a HMAC
+
+   Since ProVerif uses rule rewriting to simulate decryption mechanisms, the
+   encryption is already authenticated *)
+
+(* Encrypt a message following the specifications provided in Etsi102941
+   annex E. Returns a tuple (m, k), m being a tuple containing the encrypted
+   message and all the necessary to decrypt it, and k being the symmetric AES
+   key that can be reused notably to decrypt the response
+
+   Parameters:
+    m: the message to encrypt
+    pk: the public key of the recipient
+*)
+letfun ecies_enc(m:bitstring, pk:pkey) =
+    new k:key;
+    new r:scalar;
+    let V = mul(r, G) in
+    let S = mul(r, pkey_to_point(pk)) in
+    let derived_key = kdf(S) in
+    ( (senc(m, k), senck(k, derived_key), V), k ).
+
+(* Decrypts a message that has been encrypted following Etsi102941 annex E.
+
+   Parameters:
+    m: a tuple (m, k, V) made of a symmetricaly encrypted message, following by
+       its encrypted respective key using ECIES and V as defined in the standard
+    sk: the private key of the recipient
+*)
+letfun ecies_dec(m:bitstring, sk:skey) =
+    let (encrypted_msg:bitstring, encrypted_key:bitstring, V:point) = m in
+    let S = mul(skey_to_scalar(sk), V) in
+    let derived_key = kdf(S) in
+    let k = sdeck(encrypted_key, derived_key) in
+    (sdec(encrypted_msg, k), k).
+
+(******************************************************************************)
