@@ -90,7 +90,7 @@ let readCTL() =
 
 (*********************************** ECIES ************************************)
 
-(* In ETSI 102 941, annex E, encryption is done using the following strategy :
+(* In ETSI 102 941, annex E, encryption is done using the following protocol:
     - A symmetric key is generated
     - The message is encrypted using it
     - A random private assymetric key is generated
@@ -100,7 +100,7 @@ let readCTL() =
       a HMAC
 
    Since ProVerif uses rule rewriting to simulate decryption mechanisms, the
-   encryption is already authenticated *)
+   encryption is already authenticated (see ProVerif user manual) *)
 
 (* Encrypt a message following the specifications provided in Etsi102941
    annex E. Returns a tuple (m, k), m being a tuple containing the encrypted
