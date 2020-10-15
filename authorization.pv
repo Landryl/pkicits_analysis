@@ -7,14 +7,16 @@ event AAReceivedValidationResponse.
 event EAReceivedValidationRequest.
 event EASentValidationResponse.
 
-query event(StationSentATRequest).
-query event(StationReceivedValidATResponse).
-query event(AAReceivedATRequest).
-query event(AASentATResponse).
-query event(AASentValidationRequest).
-query event(AAReceivedValidationResponse).
-query event(EAReceivedValidationRequest).
-query event(EASentValidationResponse).
+(* query event(StationSentATRequest). *)
+(* query event(StationReceivedValidATResponse). *)
+(* query event(AAReceivedATRequest). *)
+(* query event(AASentATResponse). *)
+(* query event(AASentValidationRequest). *)
+(* query event(AAReceivedValidationResponse). *)
+(* query event(EAReceivedValidationRequest). *)
+(* query event(EASentValidationResponse). *)
+
+query event(StationReceivedValidATResponse) ==> inj-event(EASentValidationResponse).
 
 let Station(sks:skey, pkaa:pkey, pkea:pkey, enrolmentSKey: skey, EC:bitstring) =
     (* Make request - Etsi 102941 6.2.3.3.1 *)
@@ -93,7 +95,7 @@ let AuthorizationAuthority(skaa:skey, pks:pkey, pkea:pkey) =
 
     0.
 
-let EnrolmentAuthority(skea:skey, pks:pkey) =
+let EnrolmentAuthority(skea:skey, enrolmentPKey:pkey) =
     (* RECEIVE AUTHORIZATION VALIDATION REQUEST MESSAGE *)
     in(c, validationRequestEncrypted:bitstring);
 
@@ -105,9 +107,10 @@ let EnrolmentAuthority(skea:skey, pks:pkey) =
     (* should do a checksign *)
 
     let (ecSignature:bitstring, keytag:bitstring) = getmsg(validationRequest) in
+
     let (signedExternalPayload:bitstring, ks:key) = ecies_dec(ecSignature, skea) in
 
-    if checksign(signedExternalPayload, pks) then
+    if checksign(signedExternalPayload, enrolmentPKey) then
     let externalPayload = getmsg(signedExternalPayload) in
     if checkhash(externalPayload, keytag) then
 
@@ -135,5 +138,5 @@ process
     (* We also assume that the station possesses the AA public key *)
     (     (!Station(sks, pk(skaa), pk(skea), enrolmentSKey, EC))
         | (!AuthorizationAuthority(skaa, pk(sks), pk(skea)))
-        | (!EnrolmentAuthority(skea, pk(sks)))
+        | (!EnrolmentAuthority(skea, enrolmentPKey))
     )
