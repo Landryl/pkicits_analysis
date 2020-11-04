@@ -5,6 +5,7 @@ event EASentECResponse.
 
 (* confidentiality of the canonical key *)
 query attacker(new sks).
+query attacker(new idStation).
 
 (* authentication of response should hold *)
 query inj-event(StationReceivedECResponse) ==> inj-event(EASentECResponse).
@@ -19,7 +20,7 @@ query inj-event(EAReceivedValidECRequest) ==> inj-event(StationSentECRequest).
 (* query event(StationSentECRequest).     *)
 (* query event(StationReceivedECResponse).*)
 
-let Station(sks:skey, pkea:pkey) =
+let Station(sks:skey, pkea:pkey, idStation:bitstring) =
     (* Make request - Etsi 102941 6.2.3.2.1 *)
     new verificationSKey:skey;
     let verificationPKey = pk(verificationSKey) in
@@ -40,7 +41,7 @@ let Station(sks:skey, pkea:pkey) =
     if checksign(answer, pkea) then
         event StationReceivedECResponse.
 
-let EnrolmentAuthority(skea:skey, pks:pkey) =
+let EnrolmentAuthority(skea:skey, pks:pkey, idStation:bitstring) =
     in(c, encrypted_request:bitstring);
     let (request:bitstring, k:key) = ecies_dec(encrypted_request, skea) in
 
@@ -49,7 +50,8 @@ let EnrolmentAuthority(skea:skey, pks:pkey) =
     if checksign(request, pks) then
     let innerrequest = getmsg(request) in
     (** Check inner signature **)
-    let pkey_to_bitstring(innerkey) = getmsg(innerrequest) in
+    let (pkey_to_bitstring(innerkey), sentIdStation:bitstring) = getmsg(innerrequest) in
+    if sentIdStation = idStation then
     if checksign(innerrequest, innerkey) then
 
     event EAReceivedValidECRequest;
@@ -64,6 +66,7 @@ let EnrolmentAuthority(skea:skey, pks:pkey) =
 process
     new sks:skey;
     new skea:skey;
-    (     (!Station(sks, pk(skea)))
-        | (!EnrolmentAuthority(skea, pk(sks)))
+    new idStation:bitstring;
+    (     (!Station(sks, pk(skea), idStation))
+        | (!EnrolmentAuthority(skea, pk(sks), idStation))
     )
