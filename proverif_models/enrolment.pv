@@ -16,9 +16,9 @@ query inj-event(EAReceivedValidECRequest) ==> inj-event(StationSentECRequest).
 (* Sanity check, making sure all branches are reachables. Theses queries should
    return false *)
 (* query event(EAReceivedValidECRequest). *)
-(* query event(EASentECResponse).         *)
-(* query event(StationSentECRequest).     *)
-(* query event(StationReceivedECResponse).*)
+(* query event(EASentECResponse).        *)
+(* query event(StationSentECRequest).   *)
+(* query event(StationReceivedECResponse). *)
 
 let Station(sks:skey, pkea:pkey, idStation:bitstring) =
     (* Make request - Etsi 102941 6.2.3.2.1 *)
@@ -27,7 +27,7 @@ let Station(sks:skey, pkea:pkey, idStation:bitstring) =
     let tbsKey = pkey_to_bitstring(verificationPKey) in
 
     (* Proof of Possession *)
-    let inner_request = sign(tbsKey, verificationSKey) in
+    let inner_request = sign((tbsKey, idStation), verificationSKey) in
     let outer_request = sign(inner_request, sks) in
 
     event StationSentECRequest;
