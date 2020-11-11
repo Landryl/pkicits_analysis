@@ -112,14 +112,14 @@ letfun ecies_dec(m:bitstring, sk:skey) =
 
 (* ==PROTOCOL== *)
 
-let Station(sks:skey, pkea:pkey) =
+let Station(sks:skey, pkea:pkey, idStation:bitstring) =
     (* Make request - Etsi 102941 6.2.3.2.1 *)
     new verificationSKey:skey;
     let verificationPKey = pk(verificationSKey) in
     let tbsKey = pkey_to_bitstring(verificationPKey) in
 
     (* Proof of Possession *)
-    let inner_request = sign(tbsKey, verificationSKey) in
+    let inner_request = sign((tbsKey, idStation), verificationSKey) in
     let outer_request = sign(inner_request, sks) in
 
     let (encrypted_request:bitstring, k:key) = ecies_enc(outer_request, pkea) in
@@ -131,7 +131,7 @@ let Station(sks:skey, pkea:pkey) =
     if checksign(answer, pkea) then
     0.
 
-let EnrolmentAuthority(skea:skey, pks:pkey) =
+let EnrolmentAuthority(skea:skey, pks:pkey, idStation:bitstring) =
     in(c, encrypted_request:bitstring);
     let (request:bitstring, k:key) = ecies_dec(encrypted_request, skea) in
 
@@ -140,7 +140,8 @@ let EnrolmentAuthority(skea:skey, pks:pkey) =
     if checksign(request, pks) then
     let innerrequest = getmsg(request) in
     (** Check inner signature **)
-    let pkey_to_bitstring(innerkey) = getmsg(innerrequest) in
+    let (pkey_to_bitstring(innerkey), sentIdStation:bitstring) = getmsg(innerrequest) in
+    if sentIdStation = idStation then
     if checksign(innerrequest, innerkey) then
 
     (** Sign provided key **)
@@ -150,8 +151,8 @@ let EnrolmentAuthority(skea:skey, pks:pkey) =
     out(c, senc(res, k)).
 
 process
-    ! new sks:skey; new skea:skey;
+    ! new sks:skey; new skea:skey; new idStation:bitstring;
     ! (
-        (EnrolmentAuthority(skea, pk(sks)))
-      | (Station(sks, pk(skea)))
+        (EnrolmentAuthority(skea, pk(sks), idStation))
+      | (Station(sks, pk(skea), idStation))
     )
