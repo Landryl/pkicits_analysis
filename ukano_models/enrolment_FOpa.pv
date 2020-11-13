@@ -1,0 +1,172 @@
+(* ==THEORY== *)
+free c:channel.
+
+(************************* ELLIPTIC CURVE EQUATIONS ***************************)
+
+(* Theses equations are required for the modeling of ECIES. See ECIES section
+   for a higher-level of abstraction *)
+
+type point.
+type scalar.
+
+const G: point [data].
+fun mul(scalar, point): point.
+equation forall x: scalar, y: scalar; mul(y, mul(x, G)) = mul(x, mul(y, G)).
+
+(* For lisibility, conversions functions that are closer to usual conventions
+   seen in other ProVerif models *)
+
+type skey.
+type pkey.
+
+fun skey_to_scalar(skey): scalar [data, typeConverter].
+fun pkey_to_point(pkey): point [data, typeConverter].
+
+fun pk(skey): pkey.
+equation forall x:skey; pkey_to_point(pk(x)) = mul(skey_to_scalar(x), G).
+
+(* Required to allow encryption of public keys *)
+fun pkey_to_bitstring(pkey): bitstring [data, typeConverter].
+
+(*************************** SYMMETRIC ENCRYPTION *****************************)
+
+type key.
+
+(* As stated in ProVerif user manual, basic encryption is already authenticated,
+   so no need for a MAC key *)
+fun kdf(point): key.
+
+(* Used to encrypt message, implemented using AES-CCM in the standard *)
+fun senc(bitstring, key): bitstring.
+reduc forall m: bitstring, k: key; sdec(senc(m, k), k) = m.
+
+(* Used to encrypt keys, implemented using XOR in the standard *)
+fun senck(key, key): bitstring.
+reduc forall km: key, k: key; sdeck(senck(km, k), k) = km.
+
+(******************************** SIGNATURES **********************************)
+
+fun sign(bitstring, skey): bitstring.
+reduc forall m: bitstring, sk: skey; getmsg(sign(m, sk)) = m.
+reduc forall m: bitstring, sk: skey; checksign(sign(m, sk), pk(sk)) = true.
+
+(********************************** HASHES ************************************)
+
+(* Hmac used in ATRequest *)
+type hkey.
+
+fun hmac(bitstring, hkey): bitstring.
+reduc forall m: bitstring, k: hkey; checkhmac(hmac(m, k), k) = true.
+
+(* Hash used in external payload structures *)
+
+fun hash(bitstring): bitstring.
+reduc forall m: bitstring; checkhash(hash(m), m) = true.
+
+(*********************************** ECIES ************************************)
+
+(* In ETSI 102 941, annex E, encryption is done using the following protocol:
+    - A symmetric key is generated
+    - The message is encrypted using it
+    - A random private assymetric key is generated
+    - A shared secret using it with the CA public key is created
+    - This shared secret is fed into a key derivation function
+    - Keys extracted are used to encrypt the symmetric key with XOR, and provide
+      a HMAC
+
+   Since ProVerif uses rule rewriting to simulate decryption mechanisms, the
+   encryption is already authenticated (see ProVerif user manual) *)
+
+(* Encrypt a message following the specifications provided in Etsi102941
+   annex E. Returns a tuple (m, k), m being a tuple containing the encrypted
+   message and all the necessary to decrypt it, and k being the symmetric AES
+   key that can be reused notably to decrypt the response
+
+   Parameters:
+    m: the message to encrypt
+    pk: the public key of the recipient
+*)
+letfun ecies_enc(m:bitstring, pk:pkey) =
+    new k:key;
+    new r:scalar;
+    let V = mul(r, G) in
+    let S = mul(r, pkey_to_point(pk)) in
+    let derived_key = kdf(S) in
+    ( (senc(m, k), senck(k, derived_key), V), k ).
+
+(* Decrypts a message that has been encrypted following Etsi102941 annex E.
+
+   Parameters:
+    m: a tuple (m, k, V) made of a symmetricaly encrypted message, following by
+       its encrypted respective key using ECIES and V as defined in the standard
+    sk: the private key of the recipient
+*)
+letfun ecies_dec(m:bitstring, sk:skey) =
+    let (encrypted_msg:bitstring, encrypted_key:bitstring, V:point) = m in
+    let S = mul(skey_to_scalar(sk), V) in
+    let derived_key = kdf(S) in
+    let k = sdeck(encrypted_key, derived_key) in
+    (sdec(encrypted_msg, k), k).
+
+(******************************************************************************)
+
+
+(********   This file has been automatically generated using the tool UKano. It encodes the frame opacity condition. ********)
+
+(*  *)
+letfun p1proj3tuple(m:bitstring) =
+    let (ma:bitstring, mb:bitstring, mc:bitstring) = m in
+    ma.
+
+letfun p2proj3tuple(m:bitstring) =
+    let (ma:bitstring, mb:bitstring, mc:bitstring) = m in
+    mb.
+
+letfun p3proj3tuple(m:bitstring) =
+    let (ma:bitstring, mb:bitstring, mc:point) = m in
+    mc.
+
+
+(* == PROTOCOL WITH IDEALISATION == *)
+let SYSTEM =
+( !
+  new skea : skey;
+  new sks : skey;
+     !
+      ((
+        new verificationSKey: skey;
+        new k_197: key;
+        new r: scalar;
+        let (verificationPKey: pkey) = pk(verificationSKey) in
+        let (tbsKey) = verificationPKey in
+        let (inner_request: bitstring) = sign(pkey_to_bitstring(tbsKey),verificationSKey) in
+        let (outer_request: bitstring) = sign(inner_request,sks) in
+        let (v_198: point) = (mul(r,G)) in
+        let (v_199: point) = (mul(r,pkey_to_point(pk(skea)))) in
+        let (v_200: key) = (kdf(v_199)) in
+        let ((encrypted_request_201: bitstring,k_202: key)) = ((senc(outer_request,k_197),senck(k_197,v_200),v_198),k_197) in
+        new hole__encrypted_request_I_0: bitstring;
+        out(c, choice[encrypted_request_201,hole__encrypted_request_I_0]);
+        in(c, choice[encrypted_answer: bitstring,encrypted_answerid: bitstring]);
+        let (answer: bitstring) = sdec(encrypted_answer,k_202) in
+        if checksign(answer,pk(skea)) then
+        0
+      )|(
+        in(c, choice[encrypted_request: bitstring,encrypted_requestid: bitstring]);
+        let (v_192: bitstring) = (encrypted_request) in
+        let (v_193: point) = (mul(skey_to_scalar(skea),p3proj3tuple(v_192))) in
+        let (v_194: key) = (kdf(v_193)) in
+        let (v_195: key) = (sdeck(p2proj3tuple(v_192),v_194)) in
+        let ((request: bitstring,k_196: key)) = (sdec(p1proj3tuple(v_192),v_195),v_195) in
+        if checksign(request,pk(sks)) then
+        let (innerrequest: bitstring) = getmsg(request) in
+        let pkey_to_bitstring(innerkey) = getmsg(innerrequest) in
+        if checksign(innerrequest,innerkey) then
+        let (res: bitstring) = sign(pkey_to_bitstring(innerkey),skea) in
+        new hole__res_R_1: bitstring;
+        new hole__k_R_2: key;
+        out(c, choice[senc(res,k_196),senc(hole__res_R_1,hole__k_R_2)])
+      ))
+)
+.
+process SYSTEM
