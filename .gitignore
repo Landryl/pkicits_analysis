@@ -4,5 +4,5 @@
 *.log
 *.synctex.gz
 *.pdf
-*FOpa*
-*WAuth*
+*FOpa.pi*
+*WAuth.pi*
