@@ -1,0 +1,356 @@
+free c:channel.
+
+(************************* ELLIPTIC CURVE EQUATIONS ***************************)
+
+(* Theses equations are required for the modeling of ECIES. See ECIES section
+   for a higher-level of abstraction *)
+
+type point.
+type scalar.
+
+const G: point [data].
+fun mul(scalar, point): point.
+equation forall x: scalar, y: scalar; mul(y, mul(x, G)) = mul(x, mul(y, G)).
+
+(* For lisibility, conversions functions that are closer to usual conventions
+   seen in other ProVerif models *)
+
+type skey.
+type pkey.
+
+fun skey_to_scalar(skey): scalar [data, typeConverter].
+fun pkey_to_point(pkey): point [data, typeConverter].
+
+fun pk(skey): pkey.
+equation forall x:skey; pkey_to_point(pk(x)) = mul(skey_to_scalar(x), G).
+
+(* Required to allow encryption of public keys *)
+fun pkey_to_bitstring(pkey): bitstring [data, typeConverter].
+
+(*************************** SYMMETRIC ENCRYPTION *****************************)
+
+type key.
+
+(* As stated in ProVerif user manual, basic encryption is already authenticated,
+   so no need for a MAC key *)
+fun kdf(point): key.
+
+(* Used to encrypt message, implemented using AES-CCM in the standard *)
+fun senc(bitstring, key): bitstring.
+reduc forall m: bitstring, k: key; sdec(senc(m, k), k) = m.
+
+(* Used to encrypt keys, implemented using XOR in the standard *)
+fun senck(key, key): bitstring.
+reduc forall km: key, k: key; sdeck(senck(km, k), k) = km.
+
+(******************************** SIGNATURES **********************************)
+
+fun sign(bitstring, skey): bitstring.
+reduc forall m: bitstring, sk: skey; getmsg(sign(m, sk)) = m.
+reduc forall m: bitstring, sk: skey; checksign(sign(m, sk), pk(sk)) = true.
+
+(********************************** HASHES ************************************)
+
+(* Hmac used in ATRequest *)
+type hkey.
+
+fun hmac(bitstring, hkey): bitstring.
+reduc forall m: bitstring, k: hkey; checkhmac(hmac(m, k), k) = true.
+
+(* Hash used in external payload structures *)
+
+fun hash(bitstring): bitstring.
+reduc forall m: bitstring; checkhash(hash(m), m) = true.
+
+(******************************** CERTIFICATES ********************************)
+
+type certificate.
+type host.
+
+(* Parameters:
+    skey: the private key of the certifier
+    pkey: the public key to be signed
+    host: the identity associated with the public key
+*)
+fun makecert(skey, pkey, host): certificate [data].
+
+(* The CTL and CRL are modeled using tables. By default, theses tables are not
+   available to the attacker. To make them so, a fictional process must be
+   created that act as a middleman. Scenarios where the attacker is given the
+   rights to write into the CTL/CRL can also be modeled by giving this fictional
+   process writing capabilities. *)
+
+table CTL(host, certificate).
+table CRL(host).
+
+let readCTL() =
+    in(c, req:host);
+    get CTL(=req, cert:certificate) in
+    out(c, cert).
+
+(*********************************** ECIES ************************************)
+
+(* In ETSI 102 941, annex E, encryption is done using the following protocol:
+    - A symmetric key is generated
+    - The message is encrypted using it
+    - A random private assymetric key is generated
+    - A shared secret using it with the CA public key is created
+    - This shared secret is fed into a key derivation function
+    - Keys extracted are used to encrypt the symmetric key with XOR, and provide
+      a HMAC
+
+   Since ProVerif uses rule rewriting to simulate decryption mechanisms, the
+   encryption is already authenticated (see ProVerif user manual) *)
+
+(* Encrypt a message following the specifications provided in Etsi102941
+   annex E. Returns a tuple (m, k), m being a tuple containing the encrypted
+   message and all the necessary to decrypt it, and k being the symmetric AES
+   key that can be reused notably to decrypt the response
+
+   Parameters:
+    m: the message to encrypt
+    pk: the public key of the recipient
+*)
+letfun ecies_enc(m:bitstring, pk:pkey) =
+    new k:key;
+    new r:scalar;
+    let V = mul(r, G) in
+    let S = mul(r, pkey_to_point(pk)) in
+    let derived_key = kdf(S) in
+    ( (senc(m, k), senck(k, derived_key), V), k ).
+
+(* Decrypts a message that has been encrypted following Etsi102941 annex E.
+
+   Parameters:
+    m: a tuple (m, k, V) made of a symmetricaly encrypted message, following by
+       its encrypted respective key using ECIES and V as defined in the standard
+    sk: the private key of the recipient
+*)
+letfun ecies_dec(m:bitstring, sk:skey) =
+    let (encrypted_msg:bitstring, encrypted_key:bitstring, V:point) = m in
+    let S = mul(skey_to_scalar(sk), V) in
+    let derived_key = kdf(S) in
+    let k = sdeck(encrypted_key, derived_key) in
+    (sdec(encrypted_msg, k), k).
+
+(** Internal function used by ProVerif, exposed in Ukano outputs **)
+
+letfun p1proj3tuple(m:bitstring) =
+    let (ma:bitstring, mb:bitstring, mc:bitstring) = m in
+    ma.
+
+letfun p2proj3tuple(m:bitstring) =
+    let (ma:bitstring, mb:bitstring, mc:bitstring) = m in
+    mb.
+
+letfun p3proj3tuple(m:bitstring) =
+    let (ma:bitstring, mb:bitstring, mc:point) = m in
+    mc.
+
+(* because ukano wants bitstring id names *)
+fun skey_to_bitstring(skey): bitstring [data, typeConverter].
+
+
+(******************************************************************************)
+
+(* == DECLARATIONS OF EVENTS == *)
+event Rin_1(bitstring,bitstring,bitstring).
+event Rtest_1(bitstring,bitstring,bitstring).
+event Rout_1(bitstring,bitstring,bitstring,bitstring).
+event Itest_1(bitstring,bitstring).
+event Iout_1(bitstring,bitstring,bitstring).
+event Iin_1(bitstring,bitstring,bitstring,bitstring).
+event Itest_2(bitstring,bitstring,bitstring,bitstring).
+
+
+(* == DECLARATIONS OF QUERIES == *)
+query k:bitstring, n1:bitstring, n2:bitstring,
+      m1:bitstring;
+   (event(Rtest_1(k,n2,m1))  ==>
+   (event(Rin_1(k,n2,m1))  ==>
+   (event(Iout_1(k,n1,m1))))).
+query k:bitstring, n1:bitstring, n2:bitstring,
+      m1:bitstring, m2:bitstring;
+   (event(Itest_2(k,n1,m1,m2))  ==>
+   (event(Iin_1(k,n1,m1,m2))  ==>
+   (event(Rout_1(k,n2,m1,m2))  ==>
+   (event(Rin_1(k,n2,m1))  ==>
+   (event(Iout_1(k,n1,m1))))))).
+
+(** This is a sanity check (false if the corresponding test is reachable; might also return 'cannot prove') **)
+query m4:bitstring, m3:bitstring, m2:bitstring, m1:bitstring;
+event(Itest_2(m4,m3,m2,m1)).
+
+(** This is a sanity check (false if the corresponding test is reachable; might also return 'cannot prove') **)
+query m3:bitstring, m2:bitstring, m1:bitstring;
+event(Rtest_1(m3,m2,m1)).
+
+
+
+(* == PROTOCOL WITH EVENTS == *)
+let SYSTEM =
+( !
+  new enrolmentSKey : skey;
+  new skaa : skey;
+  new skea : skey;
+  new idsks : skey;
+     !
+      ((
+        new verificationSKey: skey;
+        new hmacKey_229: hkey;
+        new k_232: key;
+        new r_233: scalar;
+        new k_238: key;
+        new r_239: scalar;
+        let (verificationPKey_228: pkey) = pk(verificationSKey) in
+        let (keytag_230: bitstring) = hmac(pkey_to_bitstring(verificationPKey_228),hmacKey_229) in
+        let (sharedATRequestHash: bitstring) = hash(keytag_230) in
+        let (signedExternalPayload_231: bitstring) = sign(sharedATRequestHash,enrolmentSKey) in
+        let (v_234: point) = (mul(r_233,G)) in
+        let (v_235: point) = (mul(r_233,pkey_to_point(pk(skea)))) in
+        let (v_236: key) = (kdf(v_235)) in
+        let ((ECSignature_237: bitstring,kea: key)) = ((senc(signedExternalPayload_231,k_232),senck(k_232,v_236),v_234),k_232) in
+        let (innerATRequest: bitstring) = (ECSignature_237,keytag_230,verificationPKey_228,hmacKey_229) in
+        let (v_240: point) = (mul(r_239,G)) in
+        let (v_241: point) = (mul(r_239,pkey_to_point(pk(skaa)))) in
+        let (v_242: key) = (kdf(v_241)) in
+        let ((m_243: bitstring,k_244: key)) = ((senc(innerATRequest,k_238),senck(k_238,v_242),v_240),k_238) in
+        new sess_I: bitstring;
+        event Itest_1(skey_to_bitstring(enrolmentSKey),sess_I);
+        event Iout_1(skey_to_bitstring(enrolmentSKey),sess_I,m_243);
+        out(c, m_243);
+        in(c, resm: bitstring);
+        event Iin_1(skey_to_bitstring(enrolmentSKey),sess_I,m_243,resm);
+        let (res_245: bitstring) = sdec(resm,k_244) in
+        if checksign(res_245,pk(skaa)) then
+        event Itest_2(skey_to_bitstring(enrolmentSKey),sess_I,m_243,resm)
+      )|(
+        in(c, m_206: bitstring);
+        new sess_R: bitstring;
+        event Rin_1(skey_to_bitstring(enrolmentSKey),sess_R,m_206);
+        new k_212: key;
+        new r: scalar;
+        let (v_207: bitstring) = (m_206) in
+        let (v_208: point) = (mul(skey_to_scalar(skea),p3proj3tuple(v_207))) in
+        let (v_209: key) = (kdf(v_208)) in
+        let (v_210: key) = (sdeck(p2proj3tuple(v_207),v_209)) in
+        let ((request: bitstring,k_211: key)) = (sdec(p1proj3tuple(v_207),v_210),v_210) in
+        let ((ECSignature: bitstring,keytag: bitstring,verificationPKey: pkey,hmacKey: hkey)) = request in
+        if checkhmac(keytag,hmacKey) then
+        let (tbsData: bitstring) = (ECSignature,keytag) in
+        let (signedValidationRequest: bitstring) = sign(tbsData,skea) in
+        let (v_213: point) = (mul(r,G)) in
+        let (v_214: point) = (mul(r,pkey_to_point(pk(skea)))) in
+        let (v_215: key) = (kdf(v_214)) in
+        let ((validationRequest: bitstring,kvr: key)) = ((senc(signedValidationRequest,k_212),senck(k_212,v_215),v_213),k_212) in
+        let (v_216: bitstring) = (validationRequest) in
+        let (v_217: point) = (mul(skey_to_scalar(skaa),p3proj3tuple(v_216))) in
+        let (v_218: key) = (kdf(v_217)) in
+        let (v_219: key) = (sdeck(p2proj3tuple(v_216),v_218)) in
+        let ((validationRequest_220: bitstring,k_221: key)) = (sdec(p1proj3tuple(v_216),v_219),v_219) in
+        let ((ecSignature: bitstring,keytag_222: bitstring)) = getmsg(validationRequest_220) in
+        let (v_223: bitstring) = (ecSignature) in
+        let (v_224: point) = (mul(skey_to_scalar(skaa),p3proj3tuple(v_223))) in
+        let (v_225: key) = (kdf(v_224)) in
+        let (v_226: key) = (sdeck(p2proj3tuple(v_223),v_225)) in
+        let ((signedExternalPayload: bitstring,ks: key)) = (sdec(p1proj3tuple(v_223),v_226),v_226) in
+        if checksign(signedExternalPayload,pk(enrolmentSKey)) then
+        let (externalPayload: bitstring) = getmsg(signedExternalPayload) in
+        if checkhash(externalPayload,keytag_222) then
+        let (requestHash: bitstring) = hash(validationRequest_220) in
+        let (signedResponse: bitstring) = sign(requestHash,skaa) in
+        let (res: bitstring) = senc(signedResponse,k_221) in
+        let (validationResponse: bitstring) = sdec(res,kvr) in
+        if checksign(validationResponse,pk(skea)) then
+        let (requestHash_227: bitstring) = getmsg(validationResponse) in
+        if checkhash(requestHash_227,validationRequest_220) then
+        let (AT: bitstring) = sign(pkey_to_bitstring(verificationPKey),skea) in
+        event Rtest_1(skey_to_bitstring(enrolmentSKey),sess_R,m_206);
+        event Rout_1(skey_to_bitstring(enrolmentSKey),sess_R,m_206,senc(AT,k_221));
+        out(c, senc(AT,k_221))
+      ))
+)
+ | (!
+  new enrolmentSKey : skey;
+  new skaa : skey;
+  new skea : skey;
+  new idsks : skey;
+  out(c, idsks);
+     !
+      ((
+        new verificationSKey: skey;
+        new hmacKey_229: hkey;
+        new k_232: key;
+        new r_233: scalar;
+        new k_238: key;
+        new r_239: scalar;
+        let (verificationPKey_228: pkey) = pk(verificationSKey) in
+        let (keytag_230: bitstring) = hmac(pkey_to_bitstring(verificationPKey_228),hmacKey_229) in
+        let (sharedATRequestHash: bitstring) = hash(keytag_230) in
+        let (signedExternalPayload_231: bitstring) = sign(sharedATRequestHash,enrolmentSKey) in
+        let (v_234: point) = (mul(r_233,G)) in
+        let (v_235: point) = (mul(r_233,pkey_to_point(pk(skea)))) in
+        let (v_236: key) = (kdf(v_235)) in
+        let ((ECSignature_237: bitstring,kea: key)) = ((senc(signedExternalPayload_231,k_232),senck(k_232,v_236),v_234),k_232) in
+        let (innerATRequest: bitstring) = (ECSignature_237,keytag_230,verificationPKey_228,hmacKey_229) in
+        let (v_240: point) = (mul(r_239,G)) in
+        let (v_241: point) = (mul(r_239,pkey_to_point(pk(skaa)))) in
+        let (v_242: key) = (kdf(v_241)) in
+        let ((m_243: bitstring,k_244: key)) = ((senc(innerATRequest,k_238),senck(k_238,v_242),v_240),k_238) in
+        new sess_I: bitstring;
+        event Itest_1(skey_to_bitstring(enrolmentSKey),sess_I);
+        event Iout_1(skey_to_bitstring(enrolmentSKey),sess_I,m_243);
+        out(c, m_243);
+        in(c, resm: bitstring);
+        event Iin_1(skey_to_bitstring(enrolmentSKey),sess_I,m_243,resm);
+        let (res_245: bitstring) = sdec(resm,k_244) in
+        if checksign(res_245,pk(skaa)) then
+        event Itest_2(skey_to_bitstring(enrolmentSKey),sess_I,m_243,resm)
+      )|(
+        in(c, m_206: bitstring);
+        new sess_R: bitstring;
+        event Rin_1(skey_to_bitstring(enrolmentSKey),sess_R,m_206);
+        new k_212: key;
+        new r: scalar;
+        let (v_207: bitstring) = (m_206) in
+        let (v_208: point) = (mul(skey_to_scalar(skea),p3proj3tuple(v_207))) in
+        let (v_209: key) = (kdf(v_208)) in
+        let (v_210: key) = (sdeck(p2proj3tuple(v_207),v_209)) in
+        let ((request: bitstring,k_211: key)) = (sdec(p1proj3tuple(v_207),v_210),v_210) in
+        let ((ECSignature: bitstring,keytag: bitstring,verificationPKey: pkey,hmacKey: hkey)) = request in
+        if checkhmac(keytag,hmacKey) then
+        let (tbsData: bitstring) = (ECSignature,keytag) in
+        let (signedValidationRequest: bitstring) = sign(tbsData,skea) in
+        let (v_213: point) = (mul(r,G)) in
+        let (v_214: point) = (mul(r,pkey_to_point(pk(skea)))) in
+        let (v_215: key) = (kdf(v_214)) in
+        let ((validationRequest: bitstring,kvr: key)) = ((senc(signedValidationRequest,k_212),senck(k_212,v_215),v_213),k_212) in
+        let (v_216: bitstring) = (validationRequest) in
+        let (v_217: point) = (mul(skey_to_scalar(skaa),p3proj3tuple(v_216))) in
+        let (v_218: key) = (kdf(v_217)) in
+        let (v_219: key) = (sdeck(p2proj3tuple(v_216),v_218)) in
+        let ((validationRequest_220: bitstring,k_221: key)) = (sdec(p1proj3tuple(v_216),v_219),v_219) in
+        let ((ecSignature: bitstring,keytag_222: bitstring)) = getmsg(validationRequest_220) in
+        let (v_223: bitstring) = (ecSignature) in
+        let (v_224: point) = (mul(skey_to_scalar(skaa),p3proj3tuple(v_223))) in
+        let (v_225: key) = (kdf(v_224)) in
+        let (v_226: key) = (sdeck(p2proj3tuple(v_223),v_225)) in
+        let ((signedExternalPayload: bitstring,ks: key)) = (sdec(p1proj3tuple(v_223),v_226),v_226) in
+        if checksign(signedExternalPayload,pk(enrolmentSKey)) then
+        let (externalPayload: bitstring) = getmsg(signedExternalPayload) in
+        if checkhash(externalPayload,keytag_222) then
+        let (requestHash: bitstring) = hash(validationRequest_220) in
+        let (signedResponse: bitstring) = sign(requestHash,skaa) in
+        let (res: bitstring) = senc(signedResponse,k_221) in
+        let (validationResponse: bitstring) = sdec(res,kvr) in
+        if checksign(validationResponse,pk(skea)) then
+        let (requestHash_227: bitstring) = getmsg(validationResponse) in
+        if checkhash(requestHash_227,validationRequest_220) then
+        let (AT: bitstring) = sign(pkey_to_bitstring(verificationPKey),skea) in
+        event Rtest_1(skey_to_bitstring(enrolmentSKey),sess_R,m_206);
+        event Rout_1(skey_to_bitstring(enrolmentSKey),sess_R,m_206,senc(AT,k_221));
+        out(c, senc(AT,k_221))
+      ))
+)
+.
+process SYSTEM
