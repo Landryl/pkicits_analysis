@@ -145,8 +145,11 @@ let SYSTEM =
         let (v_199: point) = (mul(r,pkey_to_point(pk(skea)))) in
         let (v_200: key) = (kdf(v_199)) in
         let ((encrypted_request_201: bitstring,k_202: key)) = ((senc(outer_request,k_197),senck(k_197,v_200),v_198),k_197) in
-        new hole__encrypted_request_I_0: bitstring;
-        out(c, choice[encrypted_request_201,hole__encrypted_request_I_0]);
+        new hole_1: bitstring;
+        new hole_2: bitstring;
+        new hole_3: bitstring;
+        let (hole__encrypted_request:bitstring) = (hole_1, hole_2, hole_3) in
+        out(c, choice[encrypted_request_201,hole__encrypted_request]);
         in(c, choice[encrypted_answer: bitstring,encrypted_answerid: bitstring]);
         let (answer: bitstring) = sdec(encrypted_answer,k_202) in
         if checksign(answer,pk(skea)) then
