@@ -62,32 +62,6 @@ reduc forall m: bitstring, k: hkey; checkhmac(hmac(m, k), k) = true.
 fun hash(bitstring): bitstring.
 reduc forall m: bitstring; checkhash(hash(m), m) = true.
 
-(******************************** CERTIFICATES ********************************)
-
-type certificate.
-type host.
-
-(* Parameters:
-    skey: the private key of the certifier
-    pkey: the public key to be signed
-    host: the identity associated with the public key
-*)
-fun makecert(skey, pkey, host): certificate [data].
-
-(* The CTL and CRL are modeled using tables. By default, theses tables are not
-   available to the attacker. To make them so, a fictional process must be
-   created that act as a middleman. Scenarios where the attacker is given the
-   rights to write into the CTL/CRL can also be modeled by giving this fictional
-   process writing capabilities. *)
-
-table CTL(host, certificate).
-table CRL(host).
-
-let readCTL() =
-    in(c, req:host);
-    get CTL(=req, cert:certificate) in
-    out(c, cert).
-
 (*********************************** ECIES ************************************)
 
 (* In ETSI 102 941, annex E, encryption is done using the following protocol:
