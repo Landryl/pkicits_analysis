@@ -1,0 +1,163 @@
+free c:channel.
+
+(*********************************** ECIES ************************************)
+
+(* The internals of ECIES are not modeled to limit complexity. Abstracted, it
+   behaves in a similar way to asymetric encryption. The only difference is that
+   a symmetric key is included in the request, that must be used to encrypt the
+   response.
+*)
+
+type skey.
+type pkey.
+type key.
+
+fun pk(skey): pkey.
+
+fun ecies_enc(bitstring, pkey, key): bitstring.
+reduc forall m: bitstring, sk: skey, k:key; ecies_dec(ecies_enc(m, pk(sk), k), sk) = (m, k).
+
+fun enc(bitstring, key): bitstring.
+reduc forall m: bitstring, k: key; dec(enc(m, k), k) = m.
+
+(******************************** SIGNATURES **********************************)
+
+fun sign(bitstring, skey): bitstring.
+reduc forall m: bitstring, sk: skey; getmsg(sign(m, sk)) = m.
+reduc forall m: bitstring, sk: skey; checksign(sign(m, sk), pk(sk)) = true.
+
+(********************************** HASHES ************************************)
+
+type hkey.
+
+fun hmac(bitstring, hkey): bitstring.
+reduc forall m: bitstring, k: hkey; checkhmac(hmac(m, k), k) = true.
+
+(* Hash used in external payload structures *)
+fun hash(bitstring): bitstring.
+reduc forall m: bitstring; checkhash(hash(m), m) = true.
+
+(***********************************  MISC  ***********************************)
+
+(* Required to allow encryption of public keys *)
+fun pkey_to_bitstring(pkey): bitstring [data, typeConverter].
+
+(******************************************************************************)
+(*  *)
+
+
+(* == DECLARATIONS OF EVENTS == *)
+event Rin_1(bitstring,bitstring,bitstring).
+event Rtest_1(bitstring,bitstring,bitstring).
+event Rout_1(bitstring,bitstring,bitstring,bitstring).
+event Itest_1(bitstring,bitstring).
+event Iout_1(bitstring,bitstring,bitstring).
+event Iin_1(bitstring,bitstring,bitstring,bitstring).
+event Itest_2(bitstring,bitstring,bitstring,bitstring).
+
+
+(* == DECLARATIONS OF QUERIES == *)
+query k:bitstring, n1:bitstring, n2:bitstring,
+      m1:bitstring;
+   (event(Rtest_1(k,n2,m1))  ==>
+   (event(Rin_1(k,n2,m1))  ==>
+   (event(Iout_1(k,n1,m1))))).
+query k:bitstring, n1:bitstring, n2:bitstring,
+      m1:bitstring, m2:bitstring;
+   (event(Itest_2(k,n1,m1,m2))  ==>
+   (event(Iin_1(k,n1,m1,m2))  ==>
+   (event(Rout_1(k,n2,m1,m2))  ==>
+   (event(Rin_1(k,n2,m1))  ==>
+   (event(Iout_1(k,n1,m1))))))).
+
+(** This is a sanity check (false if the corresponding test is reachable; might also return 'cannot prove') **)
+query m4:bitstring, m3:bitstring, m2:bitstring, m1:bitstring;
+event(Itest_2(m4,m3,m2,m1)).
+
+(** This is a sanity check (false if the corresponding test is reachable; might also return 'cannot prove') **)
+query m3:bitstring, m2:bitstring, m1:bitstring;
+event(Rtest_1(m3,m2,m1)).
+
+
+
+(* == PROTOCOL WITH EVENTS == *)
+let SYSTEM =
+( !
+  new idStation : bitstring;
+  new skea : skey;
+  new sks : skey;
+     !
+      ((
+        new verificationSKey: skey;
+        new k_92: key;
+        let (verificationPKey: pkey) = pk(verificationSKey) in
+        let (tbsKey: pkey) = verificationPKey in
+        let (inner_request: bitstring) = sign((tbsKey,idStation),verificationSKey) in
+        let (outer_request: bitstring) = sign(inner_request,sks) in
+        let (encrypted_request_93: bitstring) = ecies_enc(outer_request,pk(skea),k_92) in
+        new sess_I: bitstring;
+        event Itest_1(idStation,sess_I);
+        event Iout_1(idStation,sess_I,encrypted_request_93);
+        out(c, encrypted_request_93);
+        in(c, encrypted_answer: bitstring);
+        event Iin_1(idStation,sess_I,encrypted_request_93,encrypted_answer);
+        let (answer: bitstring) = dec(encrypted_answer,k_92) in
+        if checksign(answer,pk(skea)) then
+        event Itest_2(idStation,sess_I,encrypted_request_93,encrypted_answer)
+      )|(
+        in(c, encrypted_request: bitstring);
+        new sess_R: bitstring;
+        event Rin_1(idStation,sess_R,encrypted_request);
+        let ((request: bitstring,k_91: key)) = ecies_dec(encrypted_request,skea) in
+        if checksign(request,pk(sks)) then
+        let (innerrequest: bitstring) = getmsg(request) in
+        let ((innerkey: pkey,sentIdStation: bitstring)) = getmsg(innerrequest) in
+        if (sentIdStation = idStation) then
+        if checksign(innerrequest,innerkey) then
+        let (res: bitstring) = sign(pkey_to_bitstring(innerkey),skea) in
+        event Rtest_1(idStation,sess_R,encrypted_request);
+        event Rout_1(idStation,sess_R,encrypted_request,enc(res,k_91));
+        out(c, enc(res,k_91))
+      ))
+)
+ | (!
+  new idStation : bitstring;
+  new skea : skey;
+  new sks : skey;
+  out(c, idStation);
+     !
+      ((
+        new verificationSKey: skey;
+        new k_92: key;
+        let (verificationPKey: pkey) = pk(verificationSKey) in
+        let (tbsKey: pkey) = verificationPKey in
+        let (inner_request: bitstring) = sign((tbsKey,idStation),verificationSKey) in
+        let (outer_request: bitstring) = sign(inner_request,sks) in
+        let (encrypted_request_93: bitstring) = ecies_enc(outer_request,pk(skea),k_92) in
+        new sess_I: bitstring;
+        event Itest_1(idStation,sess_I);
+        event Iout_1(idStation,sess_I,encrypted_request_93);
+        out(c, encrypted_request_93);
+        in(c, encrypted_answer: bitstring);
+        event Iin_1(idStation,sess_I,encrypted_request_93,encrypted_answer);
+        let (answer: bitstring) = dec(encrypted_answer,k_92) in
+        if checksign(answer,pk(skea)) then
+        event Itest_2(idStation,sess_I,encrypted_request_93,encrypted_answer)
+      )|(
+        in(c, encrypted_request: bitstring);
+        new sess_R: bitstring;
+        event Rin_1(idStation,sess_R,encrypted_request);
+        let ((request: bitstring,k_91: key)) = ecies_dec(encrypted_request,skea) in
+        if checksign(request,pk(sks)) then
+        let (innerrequest: bitstring) = getmsg(request) in
+        let ((innerkey: pkey,sentIdStation: bitstring)) = getmsg(innerrequest) in
+        if (sentIdStation = idStation) then
+        if checksign(innerrequest,innerkey) then
+        let (res: bitstring) = sign(pkey_to_bitstring(innerkey),skea) in
+        event Rtest_1(idStation,sess_R,encrypted_request);
+        event Rout_1(idStation,sess_R,encrypted_request,enc(res,k_91));
+        out(c, enc(res,k_91))
+      ))
+)
+.
+process SYSTEM
