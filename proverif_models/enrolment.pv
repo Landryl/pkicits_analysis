@@ -73,6 +73,9 @@ process
     new sks:skey;
     new skea:skey;
     new idStation:bitstring;
+    (* public keys can be assumed known by the attacker *)
+    out(c, pk(sks));
+    out(c, pk(skea));
     (     (!Station(sks, pk(skea), idStation))
         | (!EnrolmentAuthority(skea, pk(sks), idStation))
     )
