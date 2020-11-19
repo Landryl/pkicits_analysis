@@ -1,0 +1,78 @@
+event StationSentECRequest.
+event StationReceivedECResponse.
+event EAReceivedValidECRequest.
+event EASentECResponse.
+
+(* confidentiality of the canonical key and id of the station *)
+query attacker(new sks).
+query attacker(new idStation).
+
+(* authentication of response should hold *)
+query inj-event(StationReceivedECResponse) ==> inj-event(EASentECResponse).
+
+(* authenticity of request should hold *)
+query event(EAReceivedValidECRequest) ==> event(StationSentECRequest).
+
+(* Sanity check, making sure all branches are reachables. Theses queries should
+   return false *)
+(* query event(EAReceivedValidECRequest). *)
+(* query event(EASentECResponse).         *)
+(* query event(StationSentECRequest).     *)
+(* query event(StationReceivedECResponse).*)
+
+let Station(sks:skey, pkea:pkey, idStation:bitstring) =
+    (* Make request - Etsi 102941 6.2.3.2.1 *)
+    new verificationSKey:skey;
+    let verificationPKey = pk(verificationSKey) in
+    let tbsKey = pkey_to_bitstring(verificationPKey) in
+
+    (* Proof of Possession *)
+    let inner_request = sign((tbsKey, idStation), verificationSKey) in
+    let outer_request = sign(inner_request, sks) in
+
+    event StationSentECRequest;
+
+    new k:key;
+    let encrypted_request:bitstring = ecies_enc(outer_request, pkea, k) in
+    out(c, encrypted_request);
+
+    (* Receive answer *)
+    in(c, encrypted_answer:bitstring);
+    let answer = dec(encrypted_answer, k) in
+    if checksign(answer, pkea) then
+        event StationReceivedECResponse.
+
+let EnrolmentAuthority(skea:skey, pks:pkey, idStation:bitstring) =
+    in(c, encrypted_request:bitstring);
+    let (request:bitstring, k:key) = ecies_dec(encrypted_request, skea) in
+
+    (* Process the request *)
+    (** Check outer signature **)
+    if checksign(request, pks) then
+
+    let innerrequest = getmsg(request) in
+    let (pkey_to_bitstring(innerkey), sentIdStation:bitstring) = getmsg(innerrequest) in
+
+    (* Normally the authority should recognize the station *)
+    if sentIdStation = idStation then
+
+    (* Check POP *)
+    if checksign(innerrequest, innerkey) then
+
+    (* SUCCESS *)
+    event EAReceivedValidECRequest;
+
+    (** Sign provided key **)
+    let res = sign(pkey_to_bitstring(innerkey), skea) in
+
+    (* Send request results *)
+    event EASentECResponse;
+    out(c, enc(res, k)).
+
+process
+    new sks:skey;
+    new skea:skey;
+    new idStation:bitstring;
+    (     (!Station(sks, pk(skea), idStation))
+        | (!EnrolmentAuthority(skea, pk(sks), idStation))
+    )
