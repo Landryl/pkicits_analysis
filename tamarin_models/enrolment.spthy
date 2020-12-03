@@ -1,0 +1,106 @@
+theory Enrolment
+begin
+
+builtins: hashing, asymmetric-encryption, symmetric-encryption,
+          revealing-signing
+
+functions: ecies_enc/3, ecies_dec/2
+
+equations: ecies_dec(ecies_enc(m, k, pk(sk)), sk) = <m, k>
+
+/* Station */
+
+rule StationInit:
+    [ Fr(~itsId), Fr(~sk_canon) ]
+    -->
+    /* Station register its public key */
+    [ !Pk($S, pk(~sk_canon)), !StationIsInit($S, ~itsId, ~sk_canon),
+      /* The station securely transmit its identity to an EA */
+      !SecureOut(<~itsId, pk(~sk_canon)>) ]
+
+rule StationSendRequest:
+    let
+        req = revealSign(~itsId, ~sk_canon)
+        encm = ecies_enc(req, ~k, pkEA)
+    in
+    [ !StationIsInit($S, ~itsId, ~sk_canon), Fr(~k), !PkEA($EA, pkEA) ]
+    --[ OUT_StationSendRequest(encm) ]->
+    [ StationIsWaiting($S, ~itsId, ~k, pkEA), Out(encm) ]
+
+rule StationReceiveResponse:
+    let
+        /* We only accept as input messages symmetricaly encrypted with k */
+        input = senc(clearinput, ~k)
+    in
+    [ StationIsWaiting($S, ~itsId, ~k, pkEA),
+      In(input) ]
+    --[ StationEnroled(~itsId, pkEA),
+        Eq(getMessage(clearinput), ~itsId),
+        /* We check that the answer is signaed by EA we sent to */
+        Eq(revealVerify(clearinput, ~itsId, pkEA), true) ]->
+    [ ]
+
+/* Enrolment Authority */
+
+rule EAInit:
+    [ Fr(~sk) ]
+    -->
+    /* The EA register its public key, also outputed to the attacker */
+    [ !PkEA($EA, pk(~sk)), Out(pk(~sk)), !EAIsInit($EA, ~sk) ]
+
+rule EAProcessRequest:
+    let
+        /* We only accept as input messages asymmetricaly encrypted with our
+           public key */
+        input = ecies_enc(m, k, pk(~sk))
+        m = ecies_dec(input, ~sk)
+        req = fst(m)
+        k = snd(m)
+        /* */
+        req_itsId = getMessage(req)
+    in
+    [ !EAIsInit($EA, ~sk), In(input), !SecureOut(<reg_itsId, pks>) ]
+    --[ /* We only approve itsId that we know about */
+        Eq(req_itsId, reg_itsId),
+        /* We only approve request signed by a canonical key that we know */
+        Eq(revealVerify(req, req_itsId, pks), true),
+        /* DONE */
+        EAApproved(req_itsId, pk(~sk)),
+        IN_EAProcessRequest(input, m) ]->
+    [ Out(senc(revealSign(req_itsId, ~sk), k)) ]
+
+/* Useful restrictions */
+
+restriction Equality:
+    "All x y #i. Eq(x,y) @i ==> x = y"
+
+/* Source lemma */
+
+lemma types [sources]:
+    all-traces
+    " All m encm #i.
+        IN_EAProcessRequest(encm, m) @ i
+        ==>
+        ( (Ex #j. KU(m) @ j & j < i)
+        | (Ex #j. OUT_StationSendRequest(encm) @ j & j < i)
+        )
+    "
+
+/* Sanity check, a station can get enroled */
+/* (check the trace to see if it makes sense) */
+
+lemma StationEnrolment:
+    exists-trace
+    " Ex S EA #i.
+      StationEnroled(S, EA) @ #i
+    "
+
+/* A station should not get enroled without EA approval */
+lemma EAAuthentication:
+    " All S EA #j.
+      StationEnroled(S, EA) @ j
+     ==>
+      Ex #i.
+      EAApproved(S, EA) @ i
+    "
+end
