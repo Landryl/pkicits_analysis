@@ -17,8 +17,6 @@
 └── ukano_models
     ├── authorization.pv
     ├── ecc
-    │   ├── authorization_ea-aa.pv
-    │   ├── authorization.pv
     │   ├── authorization_station-aa_FOpa.pv
     │   ├── authorization_station-aa.pv
     │   ├── authorization_station-aa_WAuth.pv
