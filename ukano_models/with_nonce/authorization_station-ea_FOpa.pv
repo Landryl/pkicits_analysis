@@ -1,0 +1,114 @@
+free c:channel.
+
+(*********************************** ECIES ************************************)
+
+(* The internals of ECIES are not modeled to limit complexity. Abstracted, it
+   behaves in a similar way to asymetric encryption. The only difference is that
+   a symmetric key is included in the request, that must be used to encrypt the
+   response.
+*)
+
+type skey.
+type pkey.
+type key.
+
+fun pk(skey): pkey.
+
+fun ecies_enc(bitstring, pkey, key): bitstring.
+reduc forall m: bitstring, sk: skey, k:key; ecies_dec(ecies_enc(m, pk(sk), k), sk) = (m, k).
+
+fun enc(bitstring, key): bitstring.
+reduc forall m: bitstring, k: key; dec(enc(m, k), k) = m.
+
+(******************************** SIGNATURES **********************************)
+
+(* Signature are actually dated, so in this version of the equational theory we
+   generate a fresh name before signing to simulate that. The downside is that
+   we're assuming that dates are never used twice, which might theorically still
+   happen, even with dates precised down to the second *)
+
+fun sign_i(bitstring, skey): bitstring.
+reduc forall m: bitstring, sk: skey; getmsg_i(sign_i(m, sk)) = m.
+reduc forall m: bitstring, sk: skey; checksign(sign_i(m, sk), pk(sk)) = true.
+
+letfun sign(m:bitstring, sk:skey) =
+    new date:bitstring;
+    sign_i((date, m), sk).
+
+letfun getmsg(m:bitstring) =
+    let (date:bitstring, msg:bitstring) = getmsg_i(m) in
+    msg.
+
+(********************************** HASHES ************************************)
+
+type hkey.
+
+fun hmac(bitstring, hkey): bitstring.
+reduc forall m: bitstring, k: hkey; checkhmac(hmac(m, k), k) = true.
+
+(* Hash used in external payload structures *)
+fun hash(bitstring): bitstring.
+reduc forall m: bitstring; checkhash(hash(m), m) = true.
+
+(***********************************  MISC  ***********************************)
+
+(* Required to allow encryption of public keys *)
+fun pkey_to_bitstring(pkey): bitstring [data, typeConverter].
+
+(******************************************************************************)
+(*  *)
+
+
+(* == PROTOCOL WITH IDEALISATION == *)
+let SYSTEM =
+( !
+  new enrolmentSKey : skey;
+  new skaa : skey;
+  new skea : skey;
+  new sks : skey;
+  out(c, skaa); (* usurpating AA identity *)
+  out(c, pk(skea));
+     !
+      ((
+        new verificationSKey: skey;
+        new hmacKey: hkey;
+        new date: bitstring;
+        new ktmp: key;
+        new k_104: key;
+        let (verificationPKey: pkey) = pk(verificationSKey) in
+        let (keytag: bitstring) = hmac(pkey_to_bitstring(verificationPKey),hmacKey) in
+        let (sharedATRequestHash: bitstring) = hash(keytag) in
+        let (signedExternalPayload: bitstring) = sign_i((date,sharedATRequestHash),enrolmentSKey) in
+        let (ECSignature: bitstring) = ecies_enc(signedExternalPayload,pk(skea),ktmp) in
+        let (innerATRequest: bitstring) = (ECSignature,keytag,verificationPKey,hmacKey) in
+        let (m_105: bitstring) = ecies_enc(innerATRequest,pk(skaa),k_104) in
+
+        new hole_ec: bitstring;
+        let hole_iatr = (hole_ec, keytag, verificationPKey, hmacKey) in
+        new hole_k: key;
+        let hole__m_I_0 = ecies_enc(hole_iatr, pk(skaa), hole_k) in
+
+        out(c, choice[m_105,hole__m_I_0]);
+        in(c, choice[resm: bitstring,resmid: bitstring]);
+        let (res: bitstring) = dec(resm,k_104) in
+        if checksign(res,pk(skaa)) then
+        0
+      )|(
+        in(c, choice[validationRequestEncrypted: bitstring,validationRequestEncryptedid: bitstring]);
+        new date_111: bitstring;
+        let ((validationRequest: bitstring,k_106: key)) = ecies_dec(validationRequestEncrypted,skea) in
+        if checksign(validationRequest,pk(skaa)) then
+        let (ecSignature:bitstring, keytag:bitstring) = getmsg(validationRequest) in
+        let ((signedExternalPayload_109: bitstring,ks: key)) = ecies_dec(ecSignature,skea) in
+        if checksign(signedExternalPayload_109,pk(enrolmentSKey)) then
+        let externalPayload = getmsg(signedExternalPayload_109) in
+        if checkhash(externalPayload,keytag) then
+        let (requestHash: bitstring) = hash(validationRequestEncrypted) in
+        let (signedResponse: bitstring) = sign_i((date_111,requestHash),skea) in
+        let (res_112: bitstring) = enc(signedResponse,k_106) in
+        new hole__res_R_1: bitstring;
+        out(c, choice[res_112,hole__res_R_1])
+      ))
+)
+.
+process SYSTEM
