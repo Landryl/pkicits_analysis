@@ -67,3 +67,6 @@ Models that model this fact more correctly are stored in subfolders `with_nonce`
 
 * `*_FOpa.pv` frame opacity proofs
 * `*_WAuth.pv` well-authentication proofs
+
+Frame opacity proofs should be checked with the version of ProVerif modified by
+Ukano authors that allow the usage of `in(c, choice[])`
