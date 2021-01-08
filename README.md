@@ -1,6 +1,6 @@
 ## Dependencies
 
-[Proverif](https://prosecco.gforge.inria.fr/personal/bblanche/proverif/manual.pdf)
+[Proverif](https://prosecco.gforge.inria.fr/personal/bblanche/proverif)
 and [Ukano](http://projects.lsv.ens-cachan.fr/ukano/) can be retrieved using the
 provided script:
 
