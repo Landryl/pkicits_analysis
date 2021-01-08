@@ -1,6 +1,8 @@
 ## Dependencies
 
-Proverif 2.02pl1 and UKano can be retrieved using the provided script:
+[Proverif](https://prosecco.gforge.inria.fr/personal/bblanche/proverif/manual.pdf)
+and [Ukano](http://projects.lsv.ens-cachan.fr/ukano/) can be retrieved using the
+provided script:
 
 ```
 $ ./install_dependencies.sh
