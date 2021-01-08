@@ -13,10 +13,13 @@ required to regenerate models, otherwise ProVerif is enough to run them.
 
 ## ProVerif Models
 
-* `lib.pvl` library containing all the primitives used in our models
-* `enrolment.pv` models a station (vehicule) requesting an Enrolment Certificate
+* `lib.pvl` library containing the equational theory used in our models
+* `enrolment.pv` models a station (vehicule) requesting an Enrolment Certificate,
+checks for secrecy of the station ID, authentication of the EA and authenticity
+of the request
 * `authorization.pv` models a station requesting a Authorization Ticket (the
-station is assumed to already have a Enrolment Certificate)
+station is assumed to already have a Enrolment Certificate), checks that an AT
+cannot be obtained without EA approval and the authenticity of ECSignature
 
 ## Unlinkability
 
