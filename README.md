@@ -8,25 +8,20 @@ $ ./install_dependencies.sh
 
 It will download the sources of the two tools and compile them.
 
-## Models
-
-A first model was tried be modeling the full description of ECIES, using an
-equational theory to model elliptic curves. This however lead to difficulties,
-with more than 32GB of RAM used and non-termination issues, notably while trying
-to prove unlinkability. These models can be found in `ecc` subfolders. Other
-models instead make abstraction of ECIES.
-
-Secondly, we did not first model the fact that signed structures also contains
-a date in their headers, leading to possible attacks on unlinkability. Theses
-models can be found in subfolders `without_nonce`.
-
-Models that model this fact more correctly are stored in subfolders `with_nonce`
-
 ## Unlinkability
 
 ### During enrolment
 
+```
+$ ./proverif ukano_models/with_nonce/enrolment_FOpa.pv
+$ ./proverif ukano_models/with_nonce/enrolment_WAuth.pv
+```
+
 ### During authorization, attacking exchanges between Station and AA
+
+```
+$ ./proverif ukano_models/
+```
 
 ### During authorization, attacker exchanges between AA and EA
 
@@ -43,3 +38,18 @@ station is assumed to already have a Enrolment Certificate)
 
 * `*_FOpa.pv` frame opacity proofs
 * `*_WAuth.pv` well-authentication proofs
+
+## Previous Models
+
+A first model was tried be modeling the full description of ECIES, using an
+equational theory to model elliptic curves. This however lead to difficulties,
+with more than 32GB of RAM used and non-termination issues, notably while trying
+to prove unlinkability. These models can be found in `ecc` subfolders. Other
+models instead make abstraction of ECIES.
+
+Secondly, we did not first model the fact that signed structures also contains
+a date in their headers, leading to possible attacks on unlinkability. Theses
+models can be found in subfolders `without_nonce`.
+
+Models that model this fact more correctly are stored in subfolders `with_nonce`
+
