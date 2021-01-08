@@ -4,7 +4,7 @@
 cat lib.pvl > tmp.pv
 cat $1 >> tmp.pv
 
-../../ukano tmp.pv
+../ukano tmp.pv
 if [ ! $? -eq 0 ]; then
     exit $?
 fi
