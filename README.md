@@ -24,13 +24,13 @@ Models that model this fact more correctly are stored in subfolders `with_nonce`
 
 ## Unlinkability
 
-### Station-EA, during enrolment
+### During enrolment
 
-### Station-AA, during authorization
+### During authorization, attacking exchanges between Station and AA
 
-### AA-EA, during authorization
+### During authorization, attacker exchanges between AA and EA
 
-### Station-EA, during authorization, malicious AA
+### During authorization, malicious AA
 
 ## ProVerif Models
 
