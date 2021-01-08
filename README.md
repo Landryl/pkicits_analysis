@@ -6,26 +6,8 @@ Proverif 2.02pl1 and UKano can be retrieved using the provided script:
 $ ./install_dependencies.sh
 ```
 
-It will download the sources of the two tools and compile them.
-
-## Unlinkability
-
-### During enrolment
-
-```
-$ ./proverif ukano_models/with_nonce/enrolment_FOpa.pv
-$ ./proverif ukano_models/with_nonce/enrolment_WAuth.pv
-```
-
-### During authorization, attacking exchanges between Station and AA
-
-```
-$ ./proverif ukano_models/
-```
-
-### During authorization, attacker exchanges between AA and EA
-
-### During authorization, malicious AA
+It will download the sources of the two tools and compile them. UKano is only
+required to regenerate models, otherwise ProVerif is enough to run them.
 
 ## ProVerif Models
 
@@ -34,22 +16,47 @@ $ ./proverif ukano_models/
 * `authorization.pv` models a station requesting a Authorization Ticket (the
 station is assumed to already have a Enrolment Certificate)
 
-## Ukano Models
+## Unlinkability
 
 * `*_FOpa.pv` frame opacity proofs
 * `*_WAuth.pv` well-authentication proofs
+
+### During enrolment
+
+```
+$ ./proverif ukano_models/enrolment_FOpa.pv
+$ ./proverif ukano_models/enrolment_WAuth.pv
+```
+
+### During authorization, attacking exchanges between Station and AA
+
+```
+$ ./proverif ukano_models/authorization_station-aa_FOpa.pv
+$ ./proverif ukano_models/authorization_station-aa_Wauth.pv
+```
+
+### During authorization, attacker exchanges between AA and EA
+
+```
+$ ./proverif ukano_models/authorization_aa-ea_FOpa.pv
+$ ./proverif ukano_models/authorization_aa-ea_Wauth.pv
+```
+
+### During authorization, malicious AA
+
+```
+$ ./proverif ukano_models/authorization_station-ea_FOpa.pv
+$ ./proverif ukano_models/authorization_station-ea_Wauth.pv
+```
 
 ## Previous Models
 
 A first model was tried be modeling the full description of ECIES, using an
 equational theory to model elliptic curves. This however lead to difficulties,
 with more than 32GB of RAM used and non-termination issues, notably while trying
-to prove unlinkability. These models can be found in `ecc` subfolders. Other
-models instead make abstraction of ECIES.
+to prove unlinkability. These models can be found in `previous_models/ecc`
+subfolder. Other models instead make abstraction of ECIES.
 
 Secondly, we did not first model the fact that signed structures also contains
 a date in their headers, leading to possible attacks on unlinkability. Theses
 models can be found in subfolders `without_nonce`.
-
-Models that model this fact more correctly are stored in subfolders `with_nonce`
-
