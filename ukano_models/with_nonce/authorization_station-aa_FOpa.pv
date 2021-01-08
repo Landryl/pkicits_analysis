@@ -1,3 +1,5 @@
+set allowDiffPatterns = true.
+
 free c:channel.
 
 (*********************************** ECIES ************************************)

@@ -1,3 +1,5 @@
+set allowDiffPatterns = true.
+
 (* ==THEORY== *)
 free c:channel.
 
