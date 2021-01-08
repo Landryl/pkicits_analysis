@@ -1,47 +1,12 @@
+## Dependencies
+
+Proverif 2.02pl1 and UKano can be retrieved using the provided script:
 
 ```
-.
-├── proverif_models
-│   ├── ecc
-│   │   ├── authorization.pv
-│   │   ├── enrolment.pv
-│   │   └── lib.pvl
-│   ├── with_nonce
-│   │   ├── authorization.pv
-│   │   ├── enrolment.pv
-│   │   └── lib.pvl
-│   └── without_nonce
-│       ├── authorization.pv
-│       ├── enrolment.pv
-│       └── lib.pvl
-└── ukano_models
-    ├── authorization.pv
-    ├── ecc
-    │   ├── authorization_station-aa_FOpa.pv
-    │   ├── authorization_station-aa.pv
-    │   ├── authorization_station-aa_WAuth.pv
-    │   ├── enrolment_FOpa.pv
-    │   ├── enrolment.pv
-    │   └── enrolment_Wauth.pv
-    ├── with_nonce
-    │   ├── authorization_station-aa_FOpa.pv
-    │   ├── authorization_station-aa.pv
-    │   ├── authorization_station-aa_WAuth.pv
-    │   ├── enrolment_FOpa.pv
-    │   ├── enrolment.pv
-    │   ├── enrolment_WAuth.pv
-    │   └── lib.pvl
-    └── without_nonce
-        ├── authorization_station-aa_FOpa.pv
-        ├── authorization_station-aa.pv
-        ├── authorization_station-aa_WAuth.pv
-        ├── enrolment_FOpa.pv
-        ├── enrolment.pv
-        ├── enrolment_WAuth.pv
-        └── lib.pvl
-
+$ ./install_dependencies.sh
 ```
 
+It will download the sources of the two tools and compile them.
 
 ## Models
 
@@ -57,11 +22,22 @@ models can be found in subfolders `without_nonce`.
 
 Models that model this fact more correctly are stored in subfolders `with_nonce`
 
+## Unlinkability
+
+### Station-EA, during enrolment
+
+### Station-AA, during authorization
+
+### AA-EA, during authorization
+
+### Station-EA, during authorization, malicious AA
+
 ## ProVerif Models
 
 * `lib.pvl` library containing all the primitives used in our models
 * `enrolment.pv` models a station (vehicule) requesting an Enrolment Certificate
-* `authorization.pv` models a station requesting a Authorization Ticket (the station is assumed to already have a Enrolment Certificate)
+* `authorization.pv` models a station requesting a Authorization Ticket (the
+station is assumed to already have a Enrolment Certificate)
 
 ## Ukano Models
 
