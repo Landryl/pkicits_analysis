@@ -37,7 +37,7 @@ $ ./proverif ukano_models/authorization_station-aa_FOpa.pv
 $ ./proverif ukano_models/authorization_station-aa_Wauth.pv
 ```
 
-### During authorization, attacker exchanges between AA and EA
+### During authorization, attacking exchanges between AA and EA
 
 ```
 $ ./proverif ukano_models/authorization_aa-ea_FOpa.pv
