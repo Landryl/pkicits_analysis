@@ -1,5 +1,3 @@
-set allowDiffPatterns = true.
-
 free c:channel.
 
 (*********************************** ECIES ************************************)
@@ -61,7 +59,66 @@ fun pkey_to_bitstring(pkey): bitstring [data, typeConverter].
 (*  *)
 
 
-(* == PROTOCOL WITH IDEALISATION == *)
+(* == DECLARATIONS OF EVENTS == *)
+event Rin_1(skey,bitstring,bitstring).
+event Rtest_1(skey,bitstring,bitstring).
+event Rout_1(skey,bitstring,bitstring,bitstring).
+event Rin_2(skey,bitstring,bitstring,bitstring,bitstring).
+event Rtest_2(skey,bitstring,bitstring,bitstring,bitstring).
+event Rout_2(skey,bitstring,bitstring,bitstring,bitstring,bitstring).
+event Itest_1(skey,bitstring).
+event Iout_1(skey,bitstring,bitstring).
+event Iin_1(skey,bitstring,bitstring,bitstring).
+event Itest_2(skey,bitstring,bitstring,bitstring).
+event Iout_2(skey,bitstring,bitstring,bitstring,bitstring).
+event Iin_2(skey,bitstring,bitstring,bitstring,bitstring,bitstring).
+event Itest_3(skey,bitstring,bitstring,bitstring,bitstring,bitstring).
+
+
+(* == DECLARATIONS OF QUERIES == *)
+query k:skey, n1:bitstring, n2:bitstring,
+      m1:bitstring, m2:bitstring, m3:bitstring;
+   (event(Rtest_2(k,n2,m1,m2,m3))  ==>
+   (event(Rin_2(k,n2,m1,m2,m3))  ==>
+   (event(Iout_2(k,n1,m1,m2,m3))  ==>
+   (event(Iin_1(k,n1,m1,m2))  ==>
+   (event(Rout_1(k,n2,m1,m2))  ==>
+   (event(Rin_1(k,n2,m1))  ==>
+   (event(Iout_1(k,n1,m1))))))))).
+query k:skey, n1:bitstring, n2:bitstring,
+      m1:bitstring;
+   (event(Rtest_1(k,n2,m1))  ==>
+   (event(Rin_1(k,n2,m1))  ==>
+   (event(Iout_1(k,n1,m1))))).
+query k:skey, n1:bitstring, n2:bitstring,
+      m1:bitstring, m2:bitstring, m3:bitstring, m4:bitstring;
+   (event(Itest_3(k,n1,m1,m2,m3,m4))  ==>
+   (event(Iin_2(k,n1,m1,m2,m3,m4))  ==>
+   (event(Rout_2(k,n2,m1,m2,m3,m4))  ==>
+   (event(Rin_2(k,n2,m1,m2,m3))  ==>
+   (event(Iout_2(k,n1,m1,m2,m3))  ==>
+   (event(Iin_1(k,n1,m1,m2))  ==>
+   (event(Rout_1(k,n2,m1,m2))  ==>
+   (event(Rin_1(k,n2,m1))  ==>
+   (event(Iout_1(k,n1,m1))))))))))).
+query k:skey, n1:bitstring, n2:bitstring,
+      m1:bitstring, m2:bitstring;
+   (event(Itest_2(k,n1,m1,m2))  ==>
+   (event(Iin_1(k,n1,m1,m2))  ==>
+   (event(Rout_1(k,n2,m1,m2))  ==>
+   (event(Rin_1(k,n2,m1))  ==>
+   (event(Iout_1(k,n1,m1))))))).
+
+(** This is a sanity check (false if the corresponding test is reachable; might also return 'cannot prove') **)
+query m6:skey, m5:bitstring, m4:bitstring, m3:bitstring, m2:bitstring, m1:bitstring;
+event(Itest_3(m6,m5,m4,m3,m2,m1)).
+
+(** This is a sanity check (false if the corresponding test is reachable; might also return 'cannot prove') **)
+query m5:skey, m4:bitstring, m3:bitstring, m2:bitstring, m1:bitstring;
+event(Rtest_2(m5,m4,m3,m2,m1)).
+
+
+(* == PROTOCOL WITH EVENTS == *)
 let SYSTEM =
 ( !
   new skaa : skey;
@@ -81,9 +138,12 @@ let SYSTEM =
         let (inner_request: bitstring) = sign_i((date_115,(tbsKey,idStation)),enrolmentSKey) in
         let (outer_request: bitstring) = sign_i((date_116,inner_request),sks) in
         let (encrypted_request_118: bitstring) = ecies_enc(outer_request,pk(skea),k_117) in
-        new hole__encrypted_request_I_0: bitstring;
-        out(c, choice[encrypted_request_118,hole__encrypted_request_I_0]);
-        in(c, choice[encrypted_answer: bitstring,encrypted_answerid: bitstring]);
+        new sess_I: bitstring;
+        event Itest_1(skaa,sess_I);
+        event Iout_1(skaa,sess_I,encrypted_request_118);
+        out(c, encrypted_request_118);
+        in(c, encrypted_answer: bitstring);
+        event Iin_1(skaa,sess_I,encrypted_request_118,encrypted_answer);
         new verificationSKey: skey;
         new hmacKey: hkey;
         new date_120: bitstring;
@@ -98,14 +158,18 @@ let SYSTEM =
         let (ECSignature: bitstring) = ecies_enc(signedExternalPayload_121,pk(skea),ktmp) in
         let (innerATRequest: bitstring) = (ECSignature,keytag_119,verificationPKey,hmacKey) in
         let (m_123: bitstring) = ecies_enc(innerATRequest,pk(skaa),k2_122) in
-        new hole__m_I_1: bitstring;
-        out(c, choice[m_123,hole__m_I_1]);
-        in(c, choice[resm: bitstring,resmid: bitstring]);
+        event Itest_2(skaa,sess_I,encrypted_request_118,encrypted_answer);
+        event Iout_2(skaa,sess_I,encrypted_request_118,encrypted_answer,m_123);
+        out(c, m_123);
+        in(c, resm: bitstring);
+        event Iin_2(skaa,sess_I,encrypted_request_118,encrypted_answer,m_123,resm);
         let (res_124: bitstring) = dec(resm,k2_122) in
         if checksign(res_124,pk(skaa)) then
-        0
+        event Itest_3(skaa,sess_I,encrypted_request_118,encrypted_answer,m_123,resm)
       )|(
-        in(c, choice[encrypted_request: bitstring,encrypted_requestid: bitstring]);
+        in(c, encrypted_request: bitstring);
+        new sess_R: bitstring;
+        event Rin_1(skaa,sess_R,encrypted_request);
         new date: bitstring;
         let ((request: bitstring,k_109: key)) = ecies_dec(encrypted_request,skea) in
         if checksign(request,pk(sks)) then
@@ -114,10 +178,11 @@ let SYSTEM =
         if (sentIdStation = idStation) then
         if checksign(innerrequest,innerkey) then
         let (res_enrol: bitstring) = sign_i((date,innerkey),skea) in
-        new hole__res_enrol_R_2: bitstring;
-        new hole__k_R_3: key;
-        out(c, choice[enc(res_enrol,k_109),enc(hole__res_enrol_R_2,hole__k_R_3)]);
-        in(c, choice[validationRequestEncrypted: bitstring,validationRequestEncryptedid: bitstring]);
+        event Rtest_1(skaa,sess_R,encrypted_request);
+        event Rout_1(skaa,sess_R,encrypted_request,enc(res_enrol,k_109));
+        out(c, enc(res_enrol,k_109));
+        in(c, validationRequestEncrypted: bitstring);
+        event Rin_2(skaa,sess_R,encrypted_request,enc(res_enrol,k_109),validationRequestEncrypted);
         new date_114: bitstring;
         let ((validationRequest: bitstring,k2: key)) = ecies_dec(validationRequestEncrypted,skea) in
         if checksign(validationRequest,pk(skaa)) then
@@ -129,8 +194,9 @@ let SYSTEM =
         let (requestHash: bitstring) = hash(validationRequestEncrypted) in
         let (signedResponse: bitstring) = sign_i((date_114,requestHash),skea) in
         let (res: bitstring) = enc(signedResponse,k2) in
-        new hole__res_R_4: bitstring;
-        out(c, choice[res,hole__res_R_4])
+        event Rtest_2(skaa,sess_R,encrypted_request,enc(res_enrol,k_109),validationRequestEncrypted);
+        event Rout_2(skaa,sess_R,encrypted_request,enc(res_enrol,k_109),validationRequestEncrypted,res);
+        out(c, res)
       ))
 )
  | (!
@@ -152,9 +218,12 @@ let SYSTEM =
         let (inner_request: bitstring) = sign_i((date_115,(tbsKey,idStation)),enrolmentSKey) in
         let (outer_request: bitstring) = sign_i((date_116,inner_request),sks) in
         let (encrypted_request_118: bitstring) = ecies_enc(outer_request,pk(skea),k_117) in
-        new hole__encrypted_request_I_0: bitstring;
-        out(c, choice[encrypted_request_118,hole__encrypted_request_I_0]);
-        in(c, choice[encrypted_answer: bitstring,encrypted_answerid: bitstring]);
+        new sess_I: bitstring;
+        event Itest_1(skaa,sess_I);
+        event Iout_1(skaa,sess_I,encrypted_request_118);
+        out(c, encrypted_request_118);
+        in(c, encrypted_answer: bitstring);
+        event Iin_1(skaa,sess_I,encrypted_request_118,encrypted_answer);
         new verificationSKey: skey;
         new hmacKey: hkey;
         new date_120: bitstring;
@@ -169,14 +238,18 @@ let SYSTEM =
         let (ECSignature: bitstring) = ecies_enc(signedExternalPayload_121,pk(skea),ktmp) in
         let (innerATRequest: bitstring) = (ECSignature,keytag_119,verificationPKey,hmacKey) in
         let (m_123: bitstring) = ecies_enc(innerATRequest,pk(skaa),k2_122) in
-        new hole__m_I_1: bitstring;
-        out(c, choice[m_123,hole__m_I_1]);
-        in(c, choice[resm: bitstring,resmid: bitstring]);
+        event Itest_2(skaa,sess_I,encrypted_request_118,encrypted_answer);
+        event Iout_2(skaa,sess_I,encrypted_request_118,encrypted_answer,m_123);
+        out(c, m_123);
+        in(c, resm: bitstring);
+        event Iin_2(skaa,sess_I,encrypted_request_118,encrypted_answer,m_123,resm);
         let (res_124: bitstring) = dec(resm,k2_122) in
         if checksign(res_124,pk(skaa)) then
-        0
+        event Itest_3(skaa,sess_I,encrypted_request_118,encrypted_answer,m_123,resm)
       )|(
-        in(c, choice[encrypted_request: bitstring,encrypted_requestid: bitstring]);
+        in(c, encrypted_request: bitstring);
+        new sess_R: bitstring;
+        event Rin_1(skaa,sess_R,encrypted_request);
         new date: bitstring;
         let ((request: bitstring,k_109: key)) = ecies_dec(encrypted_request,skea) in
         if checksign(request,pk(sks)) then
@@ -185,10 +258,11 @@ let SYSTEM =
         if (sentIdStation = idStation) then
         if checksign(innerrequest,innerkey) then
         let (res_enrol: bitstring) = sign_i((date,innerkey),skea) in
-        new hole__res_enrol_R_2: bitstring;
-        new hole__k_R_3: key;
-        out(c, choice[enc(res_enrol,k_109),enc(hole__res_enrol_R_2,hole__k_R_3)]);
-        in(c, choice[validationRequestEncrypted: bitstring,validationRequestEncryptedid: bitstring]);
+        event Rtest_1(skaa,sess_R,encrypted_request);
+        event Rout_1(skaa,sess_R,encrypted_request,enc(res_enrol,k_109));
+        out(c, enc(res_enrol,k_109));
+        in(c, validationRequestEncrypted: bitstring);
+        event Rin_2(skaa,sess_R,encrypted_request,enc(res_enrol,k_109),validationRequestEncrypted);
         new date_114: bitstring;
         let ((validationRequest: bitstring,k2: key)) = ecies_dec(validationRequestEncrypted,skea) in
         if checksign(validationRequest,pk(skaa)) then
@@ -200,8 +274,9 @@ let SYSTEM =
         let (requestHash: bitstring) = hash(validationRequestEncrypted) in
         let (signedResponse: bitstring) = sign_i((date_114,requestHash),skea) in
         let (res: bitstring) = enc(signedResponse,k2) in
-        new hole__res_R_4: bitstring;
-        out(c, choice[res,hole__res_R_4])
+        event Rtest_2(skaa,sess_R,encrypted_request,enc(res_enrol,k_109),validationRequestEncrypted);
+        event Rout_2(skaa,sess_R,encrypted_request,enc(res_enrol,k_109),validationRequestEncrypted,res);
+        out(c, res)
       ))
 )
 .
