@@ -1,0 +1,111 @@
+(* ==PROTOCOL== *)
+let Station(sks:skey, pkea:pkey, pkaa:pkey, idStation:bitstring) =
+    (* Make request - Etsi 102941 6.2.3.2.1 *)
+    new enrolmentSKey:skey;
+    let enrolmentPKey = pk(enrolmentSKey) in
+    let tbsKey = pkey_to_bitstring(enrolmentPKey) in
+
+    (* Proof of Possession *)
+    let inner_request = sign((tbsKey, idStation), enrolmentSKey) in
+    let outer_request = sign(inner_request, sks) in
+
+    new k:key;
+    let encrypted_request:bitstring = ecies_enc(outer_request, pkea, k) in
+    out(c, encrypted_request);
+
+    (* Receive answer *)
+    in(c, encrypted_answer:bitstring);
+    let answer = dec(encrypted_answer, k) in
+    if checksign(answer, pkea) then
+
+    (* Station has EC, now makes an AT request *)
+    (* Make request - Etsi 102941 6.2.3.3.1 *)
+    new verificationSKey:skey;
+    let verificationPKey = pk(verificationSKey) in
+
+    (** Making the SharedATRequest **)
+    new hmacKey:hkey;
+    let keytag = hmac(pkey_to_bitstring(verificationPKey), hmacKey) in
+    let sharedATRequestHash = hash(keytag) in
+
+    (** Making the ECSignature encrypted for EA **)
+    let signedExternalPayload = sign(sharedATRequestHash, enrolmentSKey) in
+    new ktmp:key;
+    let ECSignature:bitstring = ecies_enc(signedExternalPayload, pkea, ktmp) in
+    (* ktmp is actually never used after that, since the EA won't answer to
+       the station directly, hence its name *)
+
+    let innerATRequest = (ECSignature, keytag, verificationPKey, hmacKey) in
+
+    (** This model an authorization request message without POP *)
+    (** To model with POP, innerATRequest should be signed before encryption **)
+
+    new k2:key;
+    let m:bitstring = ecies_enc(innerATRequest, pkaa, k2) in
+
+    out(c, m);
+
+    in(c, resm:bitstring);
+    let res = dec(resm, k2) in
+    (* Checking station temporary key has been signed by AA *)
+    if checksign(res, pkaa) then 0.
+
+let EnrolmentAuthority(skea:skey, pks:pkey, pkaa:pkey, idStation:bitstring) =
+    in(c, encrypted_request:bitstring);
+    let (request:bitstring, k:key) = ecies_dec(encrypted_request, skea) in
+
+    (* Process the request *)
+    (** Check outer signature **)
+    if checksign(request, pks) then
+
+    let innerrequest = getmsg(request) in
+    let (pkey_to_bitstring(innerkey), sentIdStation:bitstring) = getmsg(innerrequest) in
+
+    (* Normally the authority should recognize the station *)
+    if sentIdStation = idStation then
+
+    (* Check POP *)
+    if checksign(innerrequest, innerkey) then
+
+    (* SUCCESS *)
+
+    (** Sign provided key **)
+    let res_enrol = sign(pkey_to_bitstring(innerkey), skea) in
+
+    (* Send request results *)
+    out(c, enc(res_enrol, k));
+
+    (* RECEIVE AUTHORIZATION VALIDATION REQUEST MESSAGE *)
+    in(c, validationRequestEncrypted:bitstring);
+
+    let (validationRequest:bitstring, k2:key) =
+        ecies_dec(validationRequestEncrypted, skea) in
+
+    if checksign(validationRequest, pkaa) then
+
+    let (ecSignature:bitstring, keytag:bitstring) = getmsg(validationRequest) in
+
+    let (signedExternalPayload:bitstring, ks:key) = ecies_dec(ecSignature, skea) in
+
+    (* Check that the request is signed with previously approved enrolment key *)
+    if checksign(signedExternalPayload, innerkey) then
+    let externalPayload = getmsg(signedExternalPayload) in
+    if checkhash(externalPayload, keytag) then
+
+    (* The SharedATRequest hash matches the one signed by station, the request
+       is genuine. *)
+
+    let requestHash = hash(validationRequestEncrypted) in
+    let signedResponse = sign(requestHash, skea) in
+    let res = enc(signedResponse, k2) in
+
+    (* SEND AUTHORIZATION VALIDATION RESPONSE MESSAGE *)
+    out(c, res);
+    0.
+
+process
+    ! new sks:skey; new skea:skey; new idStation:bitstring; new skaa:skey;
+    ! (
+        (EnrolmentAuthority(skea, pk(sks), pk(skaa), idStation))
+      | (Station(sks, pk(skea), pk(skaa), idStation))
+    )
