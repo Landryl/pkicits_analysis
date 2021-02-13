@@ -1,0 +1,144 @@
+set allowDiffPatterns = true.
+
+free c:channel.
+
+(*********************************** ECIES ************************************)
+
+(* The internals of ECIES are not modeled to limit complexity. Abstracted, it
+   behaves in a similar way to asymetric encryption. The only difference is that
+   a symmetric key is included in the request, that must be used to encrypt the
+   response.
+*)
+
+type skey.
+type pkey.
+type key.
+
+fun pk(skey): pkey.
+
+fun ecies_enc(bitstring, pkey, key): bitstring.
+reduc forall m: bitstring, sk: skey, k:key; ecies_dec(ecies_enc(m, pk(sk), k), sk) = (m, k).
+
+fun enc(bitstring, key): bitstring.
+reduc forall m: bitstring, k: key; dec(enc(m, k), k) = m.
+
+(******************************** SIGNATURES **********************************)
+
+(* Signature are actually dated, so in this version of the equational theory we
+   generate a fresh name before signing to simulate that. The downside is that
+   we're assuming that dates are never used twice, which might theorically still
+   happen, even with dates precised down to the second *)
+
+fun sign_i(bitstring, skey): bitstring.
+reduc forall m: bitstring, sk: skey; getmsg_i(sign_i(m, sk)) = m.
+reduc forall m: bitstring, sk: skey; checksign(sign_i(m, sk), pk(sk)) = true.
+
+letfun sign(m:bitstring, sk:skey) =
+    new date:bitstring;
+    sign_i((date, m), sk).
+
+letfun getmsg(m:bitstring) =
+    let (date:bitstring, msg:bitstring) = getmsg_i(m) in
+    msg.
+
+(********************************** HASHES ************************************)
+
+type hkey.
+
+fun hmac(bitstring, hkey): bitstring.
+reduc forall m: bitstring, k: hkey; checkhmac(hmac(m, k), k) = true.
+
+(* Hash used in external payload structures *)
+fun hash(bitstring): bitstring.
+reduc forall m: bitstring; checkhash(hash(m), m) = true.
+
+(***********************************  MISC  ***********************************)
+
+(* Required to allow encryption of public keys *)
+fun pkey_to_bitstring(pkey): bitstring [data, typeConverter].
+
+(******************************************************************************)
+(*  *)
+
+
+(* == PROTOCOL WITH IDEALISATION == *)
+let SYSTEM =
+( !
+  new idStation : bitstring;
+  new skea : skey;
+  new sks : skey;
+     !
+      ((
+        new verificationSKey: skey;
+        new date_110: bitstring;
+        new date_111: bitstring;
+        new k_112: key;
+        let (verificationPKey: pkey) = pk(verificationSKey) in
+        let (tbsKey: pkey) = verificationPKey in
+        let (inner_request: bitstring) = sign_i((date_110,(tbsKey,idStation)),verificationSKey) in
+        let (outer_request: bitstring) = sign_i((date_111,inner_request),sks) in
+        let (encrypted_request_113: bitstring) = ecies_enc(outer_request,pk(skea),k_112) in
+        new hole__encrypted_request_I_0: bitstring;
+        out(c, choice[encrypted_request_113,hole__encrypted_request_I_0]);
+        in(c, choice[encrypted_answer: bitstring,encrypted_answerid: bitstring]);
+        let (ticket_114: bitstring) = dec(encrypted_answer,k_112) in
+        if checksign(ticket_114,pk(skea)) then
+        0
+      )|(
+        in(c, choice[encrypted_request: bitstring,encrypted_requestid: bitstring]);
+        new nonce: bitstring;
+        new subjectAttributes: bitstring;
+        new date: bitstring;
+        let ((request: bitstring,k_107: key)) = ecies_dec(encrypted_request,skea) in
+        if checksign(request,pk(sks)) then
+        let innerrequest = getmsg(request) in
+        let (pkey_to_bitstring(innerkey), sentIdStation:bitstring) = getmsg(innerrequest) in
+        if (sentIdStation = idStation) then
+        if checksign(innerrequest,innerkey) then
+        let (ticket: bitstring) = sign_i((date,(innerkey,subjectAttributes,nonce)),skea) in
+        new hole__ticket_R_1: bitstring;
+        new hole__k_R_2: key;
+        out(c, choice[enc(ticket,k_107),enc(hole__ticket_R_1,hole__k_R_2)])
+      ))
+)
+ | (!
+  new idStation : bitstring;
+  new skea : skey;
+  new sks : skey;
+  out(c, idStation);
+     !
+      ((
+        new verificationSKey: skey;
+        new date_110: bitstring;
+        new date_111: bitstring;
+        new k_112: key;
+        let (verificationPKey: pkey) = pk(verificationSKey) in
+        let (tbsKey: pkey) = verificationPKey in
+        let (inner_request: bitstring) = sign_i((date_110,(tbsKey,idStation)),verificationSKey) in
+        let (outer_request: bitstring) = sign_i((date_111,inner_request),sks) in
+        let (encrypted_request_113: bitstring) = ecies_enc(outer_request,pk(skea),k_112) in
+        new hole__encrypted_request_I_0: bitstring;
+        out(c, choice[encrypted_request_113,hole__encrypted_request_I_0]);
+        in(c, choice[encrypted_answer: bitstring,encrypted_answerid: bitstring]);
+        let (ticket_114: bitstring) = dec(encrypted_answer,k_112) in
+        if checksign(ticket_114,pk(skea)) then
+        0
+      )|(
+        in(c, choice[encrypted_request: bitstring,encrypted_requestid: bitstring]);
+        new nonce: bitstring;
+        new subjectAttributes: bitstring;
+        new date: bitstring;
+        let ((request: bitstring,k_107: key)) = ecies_dec(encrypted_request,skea) in
+        if checksign(request,pk(sks)) then
+        let innerrequest = getmsg(request) in
+        let (pkey_to_bitstring(innerkey), sentIdStation:bitstring) = getmsg(innerrequest) in
+        if (sentIdStation = idStation) then
+        if checksign(innerrequest,innerkey) then
+        let (ticket: bitstring) = sign_i((date,(innerkey,subjectAttributes,nonce)),skea) in
+        new hole__ticket_R_1: bitstring;
+        new hole__k_R_2: key;
+        out(c, choice[enc(ticket,k_107),enc(hole__ticket_R_1,hole__k_R_2)])
+      ))
+)
+.
+process SYSTEM

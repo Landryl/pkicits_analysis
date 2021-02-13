@@ -1,0 +1,64 @@
+(* ==PROTOCOL== *)
+
+let Station(sks:skey, pkaa:pkey, enrolmentSKey: skey, ticket: bitstring) =
+    new verificationSKey:skey;
+    let verificationPKey = pk(verificationSKey) in
+
+    (* There is no longer any need for a SharedATRequest *)
+
+    (* Instead, we simply provide the key we would like to embed into an AT
+       certificate, and a ticket proving that we have been authorized for this
+       request *)
+
+    let innerATRequest = (verificationPKey, ticket) in
+
+    (* To prove the ticket has been issued for us, we sign the request with
+       the key corresponding to the public key inside the ticket *)
+
+    let signedRequest = sign(innerATRequest, enrolmentSKey) in
+
+    (** This model an authorization request message without POP *)
+    (** To model with POP, we could sign before encryption, similarly to the
+        way it is currently done in the standard **)
+
+    new k:key;
+    let m:bitstring = ecies_enc(signedRequest, pkaa, k) in
+
+    out(c, m);
+
+    in(c, resm:bitstring);
+    let res = dec(resm, k) in
+    (* Checking station temporary key has been signed by AA *)
+    if checksign(res, pkaa) then
+    0.
+
+let AuthorizationAuthority(skaa:skey, pkea:pkey) =
+    (* RECEIVE AUTHORIZATION REQUEST MESSAGE *)
+    in(c, m:bitstring);
+    let (request:bitstring, k:key) = ecies_dec(m, skaa) in
+    let (verificationPKey:pkey, ticket:bitstring) = getmsg(request) in
+    (* Reading the fields inside the ticket *)
+    let (enrolmentPKey:pkey, subjectAttributes:bitstring, nonce:bitstring) = getmsg(ticket) in
+
+    (* Check the ticket is signed by EA *)
+    if checksign(ticket, pkea) then
+
+    (* Check the signature of the request against the content of the ticket *)
+    if checksign(request, enrolmentPKey) then
+
+    (* Ticket is valid, the rest of the protocol is the same as before *)
+    (* We consider the confirmedSubjectAttributes to be the one the EA has signed
+       inside the ticket *)
+
+    (* Making the AT *)
+    let AT = sign((verificationPKey, subjectAttributes), skaa) in
+
+    (* SEND AUTHORIZATION RESPONSE MESSAGE *)
+    out(c, enc(AT, k)).
+
+process
+    ! new idsks:skey; new skea:skey; new skaa:skey; new enrolmentSKey:skey; new nonce:bitstring; new subjectAttributes:bitstring;
+    ! (
+        (AuthorizationAuthority(skaa, pk(skea))
+      | (Station(idsks, pk(skaa), enrolmentSKey, sign((pk(enrolmentSKey), subjectAttributes, nonce), skea))))
+    )
