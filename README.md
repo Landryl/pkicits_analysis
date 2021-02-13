@@ -59,7 +59,7 @@ $ ./proverif ukano_models/authorization_station-ea_Wauth.pv
 * Making sure the AA checks the date of the signature of sharedATRequest can
 provide some mitigation, but formally speaking only reduces the time window
 during which the attack on unlinkability could happen.
-* Forcing Stations to make an enrolment request before each authorization request
+* Forcing stations to make an enrolment request before each authorization request
 does intituively remove entirely the attack. However, the resulting protocol
 still shows a trace against frame opacity. While a trace on frame opacity does not
 necessarily leads to a trace against unlinkability, we still end up on a protocol
