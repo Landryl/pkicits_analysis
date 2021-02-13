@@ -54,7 +54,28 @@ $ ./proverif ukano_models/authorization_station-ea_FOpa.pv
 $ ./proverif ukano_models/authorization_station-ea_Wauth.pv
 ```
 
-## Previous Models
+## Proposed fix
+
+* Making sure the AA checks the date of the signature of sharedATRequest can
+provide some mitigation, but formally speaking only reduces the time window
+during which the attack on unlinkability could happen.
+* Forcing Stations to make an enrolment request before each authorization request
+does intituively remove entirely the attack. However, the resulting protocol
+still shows a trace against frame opacity. While a trace on frame opacity does not
+necessarily leads to a trace against unlinkability, we still end up on a protocol
+that we fail to prove to have unlinkability.
+* We propose here a protocol that is provably unlinkable. We replace the validation
+request with a ticket that the EA has to provide to the station during enrolment.
+A ticket should only be used once.
+
+```
+$ ./proverif ukano_models/fix_enrolment_FOpa.pv
+$ ./proverif ukano_models/fix_enrolment_WAuth.pv
+$ ./proverif ukano_models/fix_authorization_station-aa_FOpa.pv
+$ ./proverif ukano_models/fix_authorization_station-aa_WAuth.pv
+```
+
+## Misc: previous models
 
 A first model was tried be modeling the full description of ECIES, using an
 equational theory to model elliptic curves. This however lead to difficulties,
